@@ -35,17 +35,19 @@ export default function FirewallDefender({ onScoreChange }: FirewallDefenderProp
   const [allowed, setAllowed] = useState(0);
 
   const spawnPacket = useCallback(() => {
-    const template = PACKET_TYPES[Math.floor(Math.random() * PACKET_TYPES.length)];
-    const newPacket: Packet = {
-      id: packetId,
-      ...template,
-      x: Math.random() * 80 + 10,
-      y: -10,
-      speed: Math.random() * 2 + 2,
-    };
-    setPacketId((prev) => prev + 1);
-    setPackets((prev) => [...prev.slice(-20), newPacket]);
-  }, [packetId]);
+    setPacketId((prevId) => {
+      const template = PACKET_TYPES[Math.floor(Math.random() * PACKET_TYPES.length)];
+      const newPacket: Packet = {
+        id: prevId,
+        ...template,
+        x: Math.random() * 80 + 10,
+        y: -10,
+        speed: Math.random() * 2 + 2,
+      };
+      setPackets((prev) => [...prev.slice(-20), newPacket]);
+      return prevId + 1;
+    });
+  }, []);
 
   useEffect(() => {
     if (!gameActive || lives <= 0) return;

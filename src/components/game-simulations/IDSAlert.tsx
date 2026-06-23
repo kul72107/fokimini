@@ -350,7 +350,8 @@ export default function IDSAlert({ onScoreChange }: IDSAlertProps) {
       const newScore = Math.max(0, score - 10);
       setScore(newScore);
       onScoreChange(newScore);
-      setFeedback(`Wrong device! The attack targeted: ${DEVICES.find((d) => d.id === currentAlert.targetDevice)?.name}`);
+      const correctActionLabel = currentAlert.actionLabels[currentAlert.correctAction as keyof typeof currentAlert.actionLabels];
+      setFeedback(`Wrong device! Target: ${DEVICES.find((d) => d.id === currentAlert.targetDevice)?.name}. Correct action: ${correctActionLabel}`);
       setFeedbackType('error');
       setTimeline((prev) => [...prev, `${currentAlert.timestamp} - ${currentAlert.type}: WRONG DEVICE`]);
     }
@@ -374,6 +375,7 @@ export default function IDSAlert({ onScoreChange }: IDSAlertProps) {
         setMessage(`Level ${level + 1}! Alerts are getting harder...`);
       } else {
         setGameActive(false);
+        setShowStart(true);
         setMessage(`Game Complete! Final Score: ${score}`);
       }
     }, 2500);

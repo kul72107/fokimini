@@ -295,7 +295,7 @@ export const games: Game[] = [
     id: 'sql-safari',
     title: 'SQL Safari',
     description: 'Explore the database jungle and find hidden treasures! Learn SQL injection safety.',
-    category: 'Cryptography',
+    category: 'Web Security',
     difficulty: 2,
     iconType: 'crypto',
     thumbnail: '/thumb-sql-safari.jpg',

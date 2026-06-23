@@ -75,8 +75,8 @@ const JOURNEY_TEMPLATES: Record<Protocol, (src: string, dst: string, port: numbe
         icon: <Shield size={18} strokeWidth={3} />,
         color: '#F472B6',
         action: 'Inspecting packet...',
-        detail: `Rule match: ALLOW TCP port ${port}. Stateful check passed. No malware signature detected.`,
-        decision: port === 9999 ? 'drop' : 'allow',
+        detail: port === 8080 || port === 3389 ? `Rule match: DROP TCP port ${port}. Blocked by security policy!` : `Rule match: ALLOW TCP port ${port}. Stateful check passed. No malware signature detected.`,
+        decision: port === 8080 || port === 3389 ? 'drop' : 'allow',
       },
       {
         device: 'Switch',

@@ -190,6 +190,7 @@ export default function NmapScanner({ onScoreChange }: Props) {
     const intervalMs = scanDuration / totalPorts;
 
     let currentIdx = 0;
+    const safeIntervalMs = Math.max(intervalMs, 50);
     const interval = setInterval(() => {
       if (currentIdx >= totalPorts) {
         clearInterval(interval);
@@ -213,9 +214,9 @@ export default function NmapScanner({ onScoreChange }: Props) {
       setDiscoveredPorts(prev => [...prev, updatedPort]);
       setScannedPorts(prev => new Set(prev).add(port.port));
       setScanProgress(Math.round(((currentIdx + 1) / totalPorts) * 100));
-      setLaserPosition(currentIdx);
+      setLaserPosition(currentIdx % 100);
       currentIdx++;
-    }, intervalMs);
+    }, safeIntervalMs);
 
     return () => clearInterval(interval);
   }, [isScanning, target, currentScan, generatePortGrid, totalScore, onScoreChange]);

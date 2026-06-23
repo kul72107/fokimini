@@ -150,10 +150,16 @@ function GameSimulation({
       return <PhishingSim onScoreChange={onScoreChange} />;
     case 'cert-viewer-gui':
       return <CertViewer onScoreChange={onScoreChange} />;
-    case 'advanced-port-scan':
-      return <PortScanner onScoreChange={onScoreChange} />;
-    case 'network-packet-tracer':
-      return <PacketTracer onScoreChange={onScoreChange} />;
+    case 'advanced-port-scan': {
+      const g = getGameById(gameId);
+      if (!g) return null;
+      return <ComingSoon gameTitle={g.title} gameDescription={g.description} category={g.category} difficulty={g.difficulty} />;
+    }
+    case 'network-packet-tracer': {
+      const g = getGameById(gameId);
+      if (!g) return null;
+      return <ComingSoon gameTitle={g.title} gameDescription={g.description} category={g.category} difficulty={g.difficulty} />;
+    }
     case 'xor-tool':
       return <XORTool onScoreChange={onScoreChange} />;
     case 'trojan-builder':
