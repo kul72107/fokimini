@@ -4,6 +4,7 @@ import {
   Globe, Server, ArrowRight, Check, X, RotateCcw, ChevronRight,
   Trophy, Star, Search, Database, HardDrive, Monitor, Cpu, Wifi, BookOpen
 } from 'lucide-react';
+import SimuleToolTrainingPanel from './SimuleToolTrainingPanel';
 
 interface Props {
   onScoreChange: (score: number) => void;
@@ -120,6 +121,13 @@ const LEVELS: DomainLevel[] = [
     },
   },
 ];
+
+const DNS_SIMULETOOLS = [
+  'dns_monitor',
+  'network_map',
+  'dependency_graph',
+  'config_rollback',
+] as const;
 
 const ICON_MAP: Record<string, React.ReactNode> = {
   user: <Monitor size={20} strokeWidth={3} className="text-white" />,
@@ -473,6 +481,11 @@ export default function DNSResolver({ onScoreChange }: Props) {
           )}
         </AnimatePresence>
       </div>
+
+      <SimuleToolTrainingPanel
+        mission="Resolver answers, dependency path reading, topology checks, and safe DNS config recovery."
+        toolIds={DNS_SIMULETOOLS}
+      />
 
       {/* Level Complete */}
       <AnimatePresence>

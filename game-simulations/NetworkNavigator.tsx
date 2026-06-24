@@ -4,6 +4,7 @@ import {
   Network, Heart, Star, Lock, Key, Shield, ShieldAlert, Check,
   Skull, Router, ArrowRight, RotateCcw, ChevronRight, Trophy, Zap
 } from 'lucide-react';
+import SimuleToolTrainingPanel from './SimuleToolTrainingPanel';
 
 interface Props {
   onScoreChange: (score: number) => void;
@@ -182,6 +183,14 @@ const LEVELS: LevelData[] = [
     ],
   },
 ];
+
+const NETWORK_SIMULETOOLS = [
+  'network_map',
+  'dependency_graph',
+  'access_policy',
+  'circuit_breaker',
+  'service_restart',
+] as const;
 
 const NODE_COLORS: Record<NodeType, string> = {
   start: '#4ADE80',
@@ -871,6 +880,11 @@ export default function NetworkNavigator({ onScoreChange }: Props) {
           })}
         </div>
       </div>
+
+      <SimuleToolTrainingPanel
+        mission="Topology routing, dependency impact, least-privilege paths, and failure containment."
+        toolIds={NETWORK_SIMULETOOLS}
+      />
 
       {/* Available Nodes */}
       {!levelComplete && !gameOver && availableNodes.length > 0 && (

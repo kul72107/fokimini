@@ -6,6 +6,7 @@ import {
   Calculator, Users, FolderOpen, AlertTriangle, Info, Zap,
   Search, Filter, TrendingUp, Award, HelpCircle
 } from 'lucide-react';
+import SimuleToolTrainingPanel from './SimuleToolTrainingPanel';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -145,6 +146,13 @@ const LEVELS: LevelConfig[] = [
     requiredScore: 90,
   },
 ];
+
+const ACCESS_SIMULETOOLS = [
+  'access_policy',
+  'log_timeline',
+  'canary_file',
+  'quarantine_queue',
+] as const;
 
 // ─── Helpers ─────────────────────────────────────────────
 
@@ -389,6 +397,11 @@ export default function AccessAce({ onScoreChange }: { onScoreChange: (score: nu
           </p>
         </div>
 
+        <SimuleToolTrainingPanel
+          mission="Least privilege, access review evidence, tripwire alerts, and suspicious-object handling."
+          toolIds={ACCESS_SIMULETOOLS}
+        />
+
         {/* Level Grid */}
         <div className="w-full max-w-lg grid grid-cols-2 gap-3">
           {LEVELS.map((lvl, idx) => {
@@ -492,6 +505,11 @@ export default function AccessAce({ onScoreChange }: { onScoreChange: (score: nu
       <div className="w-full max-w-2xl bg-blue-info rounded-xl border-[3px] border-black px-3 py-1.5">
         <p className="font-nunito text-xs text-white text-center font-semibold">{level.description}</p>
       </div>
+
+      <SimuleToolTrainingPanel
+        mission="Least privilege, access review evidence, tripwire alerts, and suspicious-object handling."
+        toolIds={ACCESS_SIMULETOOLS}
+      />
 
       {/* Organization Chart */}
       <div className="w-full max-w-2xl bg-white rounded-2xl border-4 border-black p-3" style={{ boxShadow: '6px 6px 0px 0px #000' }}>

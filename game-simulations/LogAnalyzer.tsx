@@ -7,6 +7,7 @@ import {
   UserCheck, UserX, FileSearch, Globe, Shield, ShieldAlert,
   Clock, Activity, Server, Wifi, Terminal, Bug
 } from 'lucide-react';
+import SimuleToolTrainingPanel from './SimuleToolTrainingPanel';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -83,6 +84,14 @@ const ATTACK_OPTIONS: { type: AttackType; label: string; icon: React.ElementType
   { type: 'privilege_escalation', label: 'Privilege Escalation', icon: ShieldAlert },
   { type: 'insider_threat', label: 'Insider Threat', icon: UserX },
 ];
+
+const LOG_SIMULETOOLS = [
+  'log_timeline',
+  'traffic_monitor',
+  'quarantine_queue',
+  'canary_file',
+  'honeypot_node',
+] as const;
 
 // ─── Case Generators ─────────────────────────────────────
 
@@ -795,6 +804,11 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
           </div>
         </div>
       )}
+
+      <SimuleToolTrainingPanel
+        mission="Incident timelines, traffic evidence, suspicious-object handling, tripwire alerts, and decoy signals."
+        toolIds={LOG_SIMULETOOLS}
+      />
 
       {/* ─── Solve Section ─────────────────────────────── */}
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, ShieldAlert, Check, X } from 'lucide-react';
+import SimuleToolTrainingPanel from './SimuleToolTrainingPanel';
 
 interface FirewallDefenderProps {
   onScoreChange: (score: number) => void;
@@ -24,6 +25,14 @@ const PACKET_TYPES = [
   { type: 'bad' as const, color: '#FB923C', label: 'INTRUSION' },
   { type: 'bad' as const, color: '#EF4444', label: 'DDOS' },
 ];
+
+const FIREWALL_SIMULETOOLS = [
+  'traffic_monitor',
+  'firewall_editor',
+  'rate_limiter',
+  'access_policy',
+  'honeypot_node',
+] as const;
 
 export default function FirewallDefender({ onScoreChange }: FirewallDefenderProps) {
   const [packets, setPackets] = useState<Packet[]>([]);
@@ -242,6 +251,11 @@ export default function FirewallDefender({ onScoreChange }: FirewallDefenderProp
           ))}
         </AnimatePresence>
       </div>
+
+      <SimuleToolTrainingPanel
+        mission="Traffic filtering, rule order, false-positive control, and safe decoy routing."
+        toolIds={FIREWALL_SIMULETOOLS}
+      />
 
       {/* Legend */}
       <div className="w-full max-w-lg flex items-center justify-center gap-4 flex-wrap">
