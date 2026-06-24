@@ -34,13 +34,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Prepare SPA fallback
+        run: cp dist/public/index.html dist/public/404.html
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist
+          path: ./dist/public
 
   deploy:
     environment:
