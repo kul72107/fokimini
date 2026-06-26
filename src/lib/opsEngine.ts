@@ -94,6 +94,8 @@ export interface OpsMatchSummary {
   attackerScore: number;
   defenderScore: number;
   blockedActions: number;
+  xpGained: number;
+  toolsUsed: number[];
   winner: 'attacker' | 'defender';
   completedTitles: string[];
   partialTitles: string[];
@@ -1006,6 +1008,7 @@ export function resolveOpsAction({
 export function summarizeOpsProgress(
   progressMap: Record<string, OpsProgress>,
   target: BattleTarget,
+  toolsUsed: number[] = [],
 ): OpsMatchSummary {
   const completed = OPS_OBJECTIVES.filter((objective) => {
     const progress = progressMap[objective.id];
@@ -1033,6 +1036,8 @@ export function summarizeOpsProgress(
     attackerScore,
     defenderScore: Math.max(0, defenderScore),
     blockedActions,
+    xpGained: 0,
+    toolsUsed: [...new Set(toolsUsed)],
     winner: attackerScore >= defenderScore ? 'attacker' : 'defender',
     completedTitles: completed.map((objective) => objective.title),
     partialTitles: partial.map((objective) => objective.title),

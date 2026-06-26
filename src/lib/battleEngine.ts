@@ -88,6 +88,22 @@ export interface AttackTool {
   description: string;
 }
 
+export interface OpsBattleRecordSummary {
+  completedObjectives: number;
+  totalObjectives: number;
+  completedSteps: number;
+  totalSteps: number;
+  partialObjectives: number;
+  progressPercent: number;
+  attackerScore: number;
+  defenderScore: number;
+  blockedActions: number;
+  toolsUsed: number[];
+  winner: 'attacker' | 'defender';
+  completedTitles: string[];
+  partialTitles: string[];
+}
+
 export interface CooldownEntry {
   toolId: number;
   availableAt: number;
@@ -125,6 +141,7 @@ export const ATTACK_TYPES = [
   { key: 'social_engineering', label: 'Social Eng.', description: 'Manipulate humans' },
   { key: 'mitm', label: 'MITM', description: 'Man-in-the-middle' },
   { key: 'zero_day', label: 'Zero Day', description: 'Unknown exploit' },
+  { key: 'ops_objective_raid', label: 'Ops Raid', description: 'Timed objective operation' },
   { key: 'custom', label: 'Custom', description: 'Mixed approach' },
 ];
 
@@ -744,6 +761,134 @@ export function launchAttack(
     replay: battleLog.replay,
     won,
     timestamp: new Date().toISOString(),
+  };
+}
+
+export function recordOpsBattleResult(
+  attackerId: number,
+  target: BattleTarget,
+  summary: OpsBattleRecordSummary,
+): BattleResult {
+  const attacker = localAuth.me();
+  if (!attacker) {
+    throw new Error('Not authenticated');
+  }
+
+  const won = summary.winner === 'attacker';
+  const completionRatio = summary.totalSteps > 0 ? summary.completedSteps / summary.totalSteps : 0;
+  let result: BattleResult['result'];
+
+  if (won && summary.completedObjectives >= summary.totalObjectives) result = 'full_breach';
+  else if (won && (summary.completedObjectives >= 4 || completionRatio >= 0.55)) result = 'breach';
+  else if (summary.completedSteps > 0) result = 'partial';
+  else if (summary.blockedActions > 0) result = 'defended';
+  else result = 'blocked';
+
+  const damageDealt = clamp(Math.round(summary.attackerScore / 8 + summary.completedSteps * 4), 0, 180);
+  const damageBlocked = clamp(Math.round(summary.defenderScore / 7 + summary.blockedActions * 12), 0, 220);
+  const xpGained = clamp(
+    Math.round(summary.attackerScore / 18 + summary.completedObjectives * 18 + summary.completedSteps * 2 + (won ? 30 : 8)),
+    5,
+    180,
+  );
+
+  localAuth.addXp(xpGained);
+  setCooldowns(summary.toolsUsed);
+  activateShield(target.userId);
+
+  const stats = localAuth.getStats();
+  const newStats: Record<string, number> = {
+    attacksLaunched: (stats.attacksLaunched || 0) + 1,
+  };
+
+  if (won) {
+    newStats.duelsWon = (stats.duelsWon || 0) + 1;
+    newStats.currentStreak = (stats.currentStreak || 0) + 1;
+    newStats.bestStreak = Math.max(stats.bestStreak || 0, newStats.currentStreak);
+    newStats.rankPoints = (stats.rankPoints || 100) + 12;
+  } else {
+    newStats.duelsLost = (stats.duelsLost || 0) + 1;
+    newStats.currentStreak = 0;
+    newStats.rankPoints = Math.max(0, (stats.rankPoints || 100) - 4);
+  }
+  localAuth.updateStats(newStats);
+
+  const attackerName = attacker.displayName || attacker.username;
+  const completedText = summary.completedTitles.length > 0
+    ? summary.completedTitles.slice(0, 3).join(', ')
+    : 'no full objectives';
+  const partialText = summary.partialTitles.length > 0
+    ? summary.partialTitles.slice(0, 3).join(', ')
+    : 'no partial chains';
+
+  const rounds: BattleRound[] = [
+    {
+      round: 1,
+      attackerTool: 'Ops Objective Chain',
+      defenderLayer: 'Target Defense Stack',
+      damage: damageDealt,
+      blocked: Math.min(damageBlocked, 80),
+      message: `Reached ${summary.completedSteps}/${summary.totalSteps} steps and completed ${summary.completedObjectives}/${summary.totalObjectives} objectives.`,
+      attackerRoll: summary.attackerScore,
+      defenderRoll: summary.defenderScore,
+    },
+    {
+      round: 2,
+      attackerTool: 'Completed Objectives',
+      defenderLayer: 'Objective Pressure',
+      damage: summary.completedObjectives * 25,
+      blocked: Math.max(0, summary.totalObjectives - summary.completedObjectives) * 6,
+      message: `Full goals: ${completedText}.`,
+      attackerRoll: summary.completedObjectives,
+      defenderRoll: summary.totalObjectives - summary.completedObjectives,
+    },
+    {
+      round: 3,
+      attackerTool: 'Bridge Assets',
+      defenderLayer: 'Defender Playbook',
+      damage: summary.partialObjectives * 12,
+      blocked: summary.blockedActions * 12,
+      message: `Partial chains: ${partialText}. Defender blocks: ${summary.blockedActions}.`,
+      attackerRoll: summary.partialObjectives,
+      defenderRoll: summary.blockedActions,
+    },
+  ];
+
+  const battleLog: BattleLog = {
+    id: `ops_${Date.now()}_${rand(1000, 9999)}`,
+    attackerId,
+    attackerName,
+    defenderId: target.userId,
+    defenderName: target.displayName,
+    result,
+    damageDealt,
+    damageBlocked,
+    xpGained,
+    attackType: 'ops_objective_raid',
+    createdAt: new Date().toISOString(),
+    replay: {
+      rounds,
+      attackerName,
+      defenderName: target.displayName,
+      finalAttackerHp: clamp(100 - Math.round(damageBlocked / 3), 0, 100),
+      finalDefenderHp: clamp(100 - Math.round(damageDealt / 3), 0, 100),
+    },
+  };
+
+  const logs = getBattleLogs();
+  logs.unshift(battleLog);
+  saveBattleLogs(logs);
+
+  return {
+    result,
+    damageDealt,
+    damageBlocked,
+    xpGained,
+    toolsUsed: summary.toolsUsed,
+    attackType: 'ops_objective_raid',
+    replay: battleLog.replay,
+    won,
+    timestamp: battleLog.createdAt,
   };
 }
 

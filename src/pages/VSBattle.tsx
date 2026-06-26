@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import {
   launchAttack,
+  recordOpsBattleResult,
   getAvailableTargets,
   getUserTools,
   estimateSuccessChance,
@@ -139,7 +140,8 @@ export default function VSBattle() {
             user={user}
             onBack={() => setPhase('select')}
             onComplete={(summary) => {
-              setOpsSummary(summary);
+              const recorded = recordOpsBattleResult(user.id, selectedTarget, summary);
+              setOpsSummary({ ...summary, xpGained: recorded.xpGained });
               setPhase('opsResult');
             }}
           />

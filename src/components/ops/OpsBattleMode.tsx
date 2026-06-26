@@ -159,6 +159,7 @@ export function OpsBattleMode({
   const [progressMap, setProgressMap] = useState<Record<string, OpsProgress>>(() => createInitialOpsProgress());
   const [selectedObjectiveId, setSelectedObjectiveId] = useState(OPS_OBJECTIVES[0].id);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [usedToolIds, setUsedToolIds] = useState<number[]>([]);
   const [finished, setFinished] = useState(false);
 
   const ownedIds = useMemo(() => new Set(getUserTools(user.id).map((tool) => tool.id)), [user.id]);
@@ -182,7 +183,7 @@ export function OpsBattleMode({
   const finishMatch = () => {
     if (finished) return;
     setFinished(true);
-    onComplete(summarizeOpsProgress(progressMap, target));
+    onComplete(summarizeOpsProgress(progressMap, target, usedToolIds));
   };
 
   useEffect(() => {
@@ -204,6 +205,7 @@ export function OpsBattleMode({
 
   const handleToolUse = (tool: AttackTool) => {
     if (finished) return;
+    setUsedToolIds((current) => current.includes(tool.id) ? current : [...current, tool.id]);
     const progress = progressMap[selectedObjective.id];
     const outcome = resolveOpsAction({
       objective: selectedObjective,
@@ -806,6 +808,11 @@ export function OpsResultPanel({
         <p className="mt-2 font-nunito text-sm font-black text-purple-dark">
           Timed operation against {target.displayName} is complete.
         </p>
+        {summary.xpGained > 0 && (
+          <p className="mt-1 font-fredoka text-xl font-black text-purple-darker">
+            +{summary.xpGained} XP saved to your profile
+          </p>
+        )}
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-5">
