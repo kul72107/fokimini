@@ -4,7 +4,7 @@ import {
   Keyboard, Eye, EyeOff, Trophy, Lock, Unlock, Monitor,
   Type, Clipboard, Target, Shield, ShieldCheck, AlertTriangle,
   RotateCcw, Zap, FileText, Sparkles, ChevronDown, User, Ghost,
-  KeyRound, Trash2, Pause, Play
+  KeyRound, Trash2, Pause, Play, Check
 } from 'lucide-react';
 
 interface Props {

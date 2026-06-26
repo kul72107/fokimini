@@ -23,6 +23,8 @@ import {
   Swords,
   Filter,
   Sparkles,
+  Check,
+  Loader2,
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -616,11 +618,11 @@ export default function Arsenal() {
   const [activeCategory, setActiveCategory] = useState<CategoryKey>("all");
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
   const [unlockingId, setUnlockingId] = useState<number | null>(null);
-  const [, forceUpdate] = useState(0);
+  const [inventoryVersion, setInventoryVersion] = useState(0);
 
   /* ── localStorage queries ── */
   const tools = ALL_TOOLS_MAPPED;
-  const inventory = useMemo(() => getInventoryItems(), []);
+  const inventory = useMemo(() => getInventoryItems(), [inventoryVersion]);
   const user = localAuth.me();
   const playerLevel = user?.level || 1;
 
@@ -632,6 +634,19 @@ export default function Arsenal() {
     });
     return map;
   }, [inventory]);
+
+  const availableMap = useMemo(() => {
+    const map = new Map<number, AvailableTool>();
+    tools.forEach((tool) => {
+      const isOwned = inventoryMap.has(tool.id);
+      map.set(tool.id, {
+        ...tool,
+        isOwned,
+        canUnlock: !isOwned && playerLevel >= tool.unlockLevel,
+      });
+    });
+    return map;
+  }, [tools, inventoryMap, playerLevel]);
 
   const filteredTools = useMemo(() => {
     if (activeCategory === "all") return tools;
@@ -662,7 +677,7 @@ export default function Arsenal() {
     setTimeout(() => {
       unlockTool(toolId);
       setUnlockingId(null);
-      forceUpdate(n => n + 1);
+      setInventoryVersion(n => n + 1);
     }, 600);
   };
 

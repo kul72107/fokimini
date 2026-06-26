@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wifi, Play, Pause, Square, Search, Filter, Eye, EyeOff,
   Star, Zap, ChevronRight, XCircle, Info, ArrowDown, ArrowUp,
-  Globe, Lock, Activity, Server, Layers, Download, Sparkles
+  Globe, Lock, Activity, Server, Layers, Download, Sparkles,
+  CheckCircle
 } from 'lucide-react';
 
 interface Props {

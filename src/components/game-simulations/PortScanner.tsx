@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Crosshair, Play, Pause, Square, Zap, Activity, Server,
-  Clock, ChevronRight, Star, Gauge, Target, Wifi, Shield
+  Clock, ChevronRight, Star, Gauge, Target, Wifi, Shield, X
 } from 'lucide-react';
 
 interface Props {

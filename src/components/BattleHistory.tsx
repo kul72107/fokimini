@@ -166,7 +166,7 @@ export default function BattleHistory({ showFilters = true, maxEntries = 50 }: B
               >
                 {/* Main Row */}
                 <button
-                  onClick={() => setIsExpanded(isExpanded ? null : entry.id)}
+                  onClick={() => setExpandedId(isExpanded ? null : entry.id)}
                   className="w-full px-4 py-3 flex items-center gap-3 text-left hover:brightness-95 transition-all"
                 >
                   {/* Attack/Defense Icon */}
@@ -258,7 +258,7 @@ export default function BattleHistory({ showFilters = true, maxEntries = 50 }: B
                         </div>
 
                         {/* Replay Data */}
-                        {entry.replayData && typeof entry.replayData === 'object' && (
+                        {typeof entry.replayData === 'object' && entry.replayData !== null && (
                           <div className="mt-2 bg-white rounded-lg border-2 border-black p-2">
                             <div className="font-nunito text-[10px] font-bold text-purple-darker mb-1">
                               Battle Replay Data

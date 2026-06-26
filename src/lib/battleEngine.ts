@@ -532,7 +532,7 @@ export function launchAttack(
   }
 
   // Resolve defender
-  let defenderName: string;
+  let defenderName = `Player_${defenderId}`;
   if (defenderId < 0) {
     const targets = getAvailableTargets(attackerId);
     const bot = targets.find(t => t.userId === defenderId);
@@ -550,7 +550,6 @@ export function launchAttack(
         }
       }
     } catch { /* */ }
-    defenderName = defenderName || `Player_${defenderId}`;
   }
 
   // Get attacker tools
