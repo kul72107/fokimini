@@ -32,9 +32,14 @@ import {
   type BattleRound,
   type AttackTool,
 } from '@/lib/battleEngine';
+import {
+  OpsBattleMode,
+  OpsResultPanel,
+  type OpsMatchSummary,
+} from '@/components/ops/OpsBattleMode';
 
 /* ─── Types ─── */
-type BattlePhase = 'select' | 'prepare' | 'battle' | 'result';
+type BattlePhase = 'select' | 'prepare' | 'battle' | 'result' | 'ops' | 'opsResult';
 
 /* ─── Lucide Icon Mapper ─── */
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -60,11 +65,13 @@ export default function VSBattle() {
   const [selectedTools, setSelectedTools] = useState<number[]>([]);
   const [selectedAttackType, setSelectedAttackType] = useState<string>('port_scan');
   const [battleResult, setBattleResult] = useState<BattleResult | null>(null);
+  const [opsSummary, setOpsSummary] = useState<OpsMatchSummary | null>(null);
 
   const handleSelectTarget = (target: BattleTarget) => {
     setSelectedTarget(target);
-    setPhase('prepare');
+    setPhase('ops');
     setSelectedTools([]);
+    setOpsSummary(null);
   };
 
   const toggleTool = (toolId: number) => {
@@ -90,6 +97,7 @@ export default function VSBattle() {
     setSelectedTarget(null);
     setSelectedTools([]);
     setBattleResult(null);
+    setOpsSummary(null);
   };
 
   if (!isAuthenticated || !user) {
@@ -122,6 +130,30 @@ export default function VSBattle() {
             key="select"
             userId={user.id}
             onSelectTarget={handleSelectTarget}
+          />
+        )}
+        {phase === 'ops' && selectedTarget && (
+          <OpsBattleMode
+            key={`ops-${selectedTarget.userId}`}
+            target={selectedTarget}
+            user={user}
+            onBack={() => setPhase('select')}
+            onComplete={(summary) => {
+              setOpsSummary(summary);
+              setPhase('opsResult');
+            }}
+          />
+        )}
+        {phase === 'opsResult' && selectedTarget && opsSummary && (
+          <OpsResultPanel
+            key="ops-result"
+            summary={opsSummary}
+            target={selectedTarget}
+            onRunAgain={() => {
+              setOpsSummary(null);
+              setPhase('ops');
+            }}
+            onBackToTargets={resetBattle}
           />
         )}
         {phase === 'prepare' && selectedTarget && (
@@ -219,10 +251,10 @@ function PhaseSelect({
         </div>
         <div>
           <h1 className="font-fredoka text-3xl font-bold text-purple-darker text-outline-sm">
-            VS BATTLE
+            CYBERPAW OPS
           </h1>
           <p className="font-nunito text-sm text-purple-dark">
-            Find a target. Launch your attack. Claim victory!
+            Pick a rival, clear timed objectives, and outscore their defenses.
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -236,7 +268,7 @@ function PhaseSelect({
         <div className="rounded-2xl border-[3px] border-black bg-white p-4">
           <h2 className="font-fredoka text-lg font-bold text-purple-darker">How player VS works</h2>
           <p className="mt-1 font-nunito text-sm font-semibold text-purple-dark">
-            Real opponents are the other accounts registered in this browser. Register or log into a second account once, then return here and it will appear as a target. AI bot targets stay available for practice.
+            Real opponents are the other accounts registered in this browser. Register or log into a second account once, then return here and it will appear as a target. AI bot targets stay available for timed Ops practice.
           </p>
         </div>
         <div className="rounded-2xl border-[3px] border-black bg-yellow-accent px-4 py-3 text-center">
@@ -397,7 +429,7 @@ function TargetCard({
       </div>
 
       <div className="mt-3 flex items-center justify-center gap-1 text-purple-primary">
-        <span className="font-nunito text-xs font-bold">Click to Attack</span>
+        <span className="font-nunito text-xs font-bold">Start Timed Ops</span>
         <ChevronRight size={14} strokeWidth={3} />
       </div>
     </motion.button>
