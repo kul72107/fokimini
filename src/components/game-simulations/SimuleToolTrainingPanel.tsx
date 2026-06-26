@@ -39,7 +39,7 @@ export default function SimuleToolTrainingPanel({ mission, toolIds }: Props) {
         <div className="flex items-center gap-2">
           <BookOpen size={18} strokeWidth={3} className="text-purple-primary" />
           <div>
-            <h3 className="font-fredoka text-sm font-bold text-purple-dark">Simuletool Training</h3>
+            <h3 className="font-fredoka text-sm font-bold text-purple-dark">Gameplay Tools</h3>
             <p className="font-nunito text-[10px] font-bold text-purple-light">{mission}</p>
           </div>
         </div>

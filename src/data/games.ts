@@ -163,7 +163,7 @@ export const games: Game[] = [
   {
     id: 'cyber-duel-arena',
     title: 'Cyber Duel Arena',
-    description: 'Build a six-slot simuletool loadout, read live service evidence, and defend uptime in a safe service-defense duel.',
+    description: 'Build a six-slot tool loadout, read live service evidence, and defend uptime in a safe service-defense duel.',
     category: 'Firewall',
     difficulty: 3,
     iconType: 'firewall',

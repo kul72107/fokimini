@@ -242,7 +242,7 @@ function PhaseSelect({
         <div className="rounded-2xl border-[3px] border-black bg-yellow-accent px-4 py-3 text-center">
           <p className="font-nunito text-[10px] font-black uppercase text-black">Arsenal</p>
           <p className="font-fredoka text-2xl font-black text-black">{ALL_TOOLS.length}</p>
-          <p className="font-nunito text-[10px] font-black text-black">simuletools</p>
+          <p className="font-nunito text-[10px] font-black text-black">tools</p>
         </div>
       </div>
 
