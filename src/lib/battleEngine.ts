@@ -3,6 +3,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import { localAuth, type LocalUser } from './localAuth';
+import { SIMULE_TOOLS } from '@/components/game-simulations/simuleTools';
 
 /* ─── Types ─── */
 
@@ -99,23 +100,18 @@ export interface ShieldEntry {
 
 /* ─── Tool Database ─── */
 
-export const ALL_TOOLS: AttackTool[] = [
-  { id: 1, name: 'Port Scanner', power: 15, tier: 1, stealthLevel: 1, cooldown: 10, defenseBreak: 5, category: 'recon', icon: 'Search', description: 'Scan for open ports and services' },
-  { id: 2, name: 'DNS Lookup', power: 10, tier: 1, stealthLevel: 2, cooldown: 8, defenseBreak: 3, category: 'network', icon: 'Globe', description: 'Query DNS records and subdomains' },
-  { id: 3, name: 'Firewall Probe', power: 12, tier: 1, stealthLevel: 2, cooldown: 12, defenseBreak: 8, category: 'network', icon: 'Shield', description: 'Test firewall rule configurations' },
-  { id: 4, name: 'SQL Injector', power: 35, tier: 2, stealthLevel: 2, cooldown: 30, defenseBreak: 15, category: 'web', icon: 'Database', description: 'Inject malicious SQL payloads' },
-  { id: 5, name: 'XSS Launcher', power: 28, tier: 2, stealthLevel: 3, cooldown: 25, defenseBreak: 12, category: 'web', icon: 'Code', description: 'Deploy cross-site scripting attacks' },
-  { id: 6, name: 'Packet Sniffer', power: 20, tier: 2, stealthLevel: 4, cooldown: 20, defenseBreak: 8, category: 'network', icon: 'Wifi', description: 'Intercept and analyze network traffic' },
-  { id: 7, name: 'Brute Forcer', power: 40, tier: 2, stealthLevel: 1, cooldown: 45, defenseBreak: 20, category: 'crypto', icon: 'Lock', description: 'Crack passwords via brute force' },
-  { id: 8, name: 'Trojan Horse', power: 38, tier: 3, stealthLevel: 5, cooldown: 60, defenseBreak: 18, category: 'malware', icon: 'Bug', description: 'Sneaky malware infiltration' },
-  { id: 9, name: 'Metasploit', power: 55, tier: 3, stealthLevel: 3, cooldown: 90, defenseBreak: 25, category: 'advanced', icon: 'Zap', description: 'Full exploit framework' },
-  { id: 10, name: 'Zero Day', power: 70, tier: 3, stealthLevel: 5, cooldown: 120, defenseBreak: 35, category: 'advanced', icon: 'Sparkles', description: 'Unknown vulnerability exploit' },
-  { id: 11, name: 'Phishing Kit', power: 25, tier: 2, stealthLevel: 4, cooldown: 35, defenseBreak: 10, category: 'social', icon: 'Mail', description: 'Deceptive credential harvesting' },
-  { id: 12, name: 'Wireshark Pro', power: 30, tier: 2, stealthLevel: 3, cooldown: 28, defenseBreak: 12, category: 'network', icon: 'Activity', description: 'Advanced packet analysis' },
-  { id: 13, name: 'Burp Suite', power: 45, tier: 3, stealthLevel: 3, cooldown: 50, defenseBreak: 22, category: 'web', icon: 'Globe', description: 'Web vulnerability scanner' },
-  { id: 14, name: 'Aircrack-ng', power: 32, tier: 2, stealthLevel: 2, cooldown: 40, defenseBreak: 15, category: 'network', icon: 'Wifi', description: 'WiFi network cracking' },
-  { id: 15, name: 'Hydra', power: 42, tier: 3, stealthLevel: 2, cooldown: 55, defenseBreak: 25, category: 'crypto', icon: 'Fingerprint', description: 'Parallelized login cracker' },
-];
+export const ALL_TOOLS: AttackTool[] = SIMULE_TOOLS.map((tool) => ({
+  id: tool.battleId,
+  name: tool.name,
+  power: tool.power,
+  tier: tool.tier,
+  stealthLevel: tool.stealthLevel,
+  cooldown: tool.cooldown,
+  defenseBreak: tool.defenseBreak,
+  category: tool.battleCategory,
+  icon: tool.icon,
+  description: `${tool.training}: ${tool.strength}`,
+}));
 
 export const ATTACK_TYPES = [
   { key: 'port_scan', label: 'Port Scan', description: 'Scan for open ports' },

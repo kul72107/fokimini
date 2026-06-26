@@ -27,11 +27,11 @@ const PACKET_TYPES = [
 ];
 
 const FIREWALL_SIMULETOOLS = [
-  'traffic_monitor',
-  'firewall_editor',
-  'rate_limiter',
-  'access_policy',
-  'honeypot_node',
+  'packet-tracer',
+  'firewall-defender',
+  'load-balancer',
+  'access-ace',
+  'ids-alert',
 ] as const;
 
 export default function FirewallDefender({ onScoreChange }: FirewallDefenderProps) {

@@ -185,11 +185,11 @@ const LEVELS: LevelData[] = [
 ];
 
 const NETWORK_SIMULETOOLS = [
-  'network_map',
-  'dependency_graph',
-  'access_policy',
-  'circuit_breaker',
-  'service_restart',
+  'network-navigator',
+  'packet-tracer',
+  'subnet-calculator',
+  'vpn-tunnel',
+  'load-balancer',
 ] as const;
 
 const NODE_COLORS: Record<NodeType, string> = {

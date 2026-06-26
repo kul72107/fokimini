@@ -13,7 +13,7 @@ import {
   Star, Sparkles, Activity, Database, Code, Ghost,
   ChevronLeft, Timer, AlertTriangle, CheckCircle, XCircle,
   Flame, TrendingUp, ArrowRight, RefreshCw, X, Power,
-  Clock, ShieldCheck, Eye
+  Clock, ShieldCheck, Eye, Network
 } from 'lucide-react';
 import {
   launchAttack,
@@ -41,7 +41,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Search, Wifi, Globe, Lock, Bug, Users, ShieldCheck, Zap,
   Shield, Eye, Star, Power, Clock, Sparkles, Swords, Code,
   Activity, Database, Mail, Fingerprint, Ghost, Flame,
-  Crosshair, Skull, XCircle, RefreshCw, TrendingUp,
+  Crosshair, Skull, XCircle, RefreshCw, TrendingUp, Shuffle, Network,
 };
 
 function ToolIcon({ name, size = 20, color = '#fff' }: { name: string; size?: number; color?: string }) {
@@ -229,6 +229,20 @@ function PhaseSelect({
           <span className="font-nunito text-xs font-bold text-purple-primary bg-purple-pale px-3 py-1 rounded-full border-2 border-black">
             {targets.length} Targets
           </span>
+        </div>
+      </div>
+
+      <div className="mb-5 grid gap-3 md:grid-cols-[1fr_auto]">
+        <div className="rounded-2xl border-[3px] border-black bg-white p-4">
+          <h2 className="font-fredoka text-lg font-bold text-purple-darker">How player VS works</h2>
+          <p className="mt-1 font-nunito text-sm font-semibold text-purple-dark">
+            Real opponents are the other accounts registered in this browser. Register or log into a second account once, then return here and it will appear as a target. AI bot targets stay available for practice.
+          </p>
+        </div>
+        <div className="rounded-2xl border-[3px] border-black bg-yellow-accent px-4 py-3 text-center">
+          <p className="font-nunito text-[10px] font-black uppercase text-black">Arsenal</p>
+          <p className="font-fredoka text-2xl font-black text-black">{ALL_TOOLS.length}</p>
+          <p className="font-nunito text-[10px] font-black text-black">simuletools</p>
         </div>
       </div>
 

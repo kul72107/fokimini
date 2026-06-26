@@ -148,10 +148,10 @@ const LEVELS: LevelConfig[] = [
 ];
 
 const ACCESS_SIMULETOOLS = [
-  'access_policy',
-  'log_timeline',
-  'canary_file',
-  'quarantine_queue',
+  'access-ace',
+  'log-analyzer',
+  'stego-spy',
+  'ids-alert',
 ] as const;
 
 // ─── Helpers ─────────────────────────────────────────────

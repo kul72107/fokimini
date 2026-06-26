@@ -7,6 +7,9 @@ import { localAuth } from '@/lib/localAuth';
 
 const navLinks = [
   { path: '/games', label: 'Games' },
+  { path: '/vs', label: 'VS' },
+  { path: '/arsenal', label: 'Arsenal' },
+  { path: '/fortress', label: 'Fortress' },
   { path: '/terminal', label: 'Terminal' },
   { path: '/leaderboard', label: 'Leaderboard' },
   { path: '/about', label: 'About' },
@@ -66,7 +69,7 @@ export default function Navbar() {
             <Link
               key={link.path}
               to={link.path}
-              className={`font-nunito font-semibold text-base px-5 py-2 rounded-full border-[3px] transition-transform hover:scale-105 ${
+              className={`font-nunito font-semibold text-sm px-3 py-2 rounded-full border-[3px] transition-transform hover:scale-105 xl:text-base xl:px-4 ${
                 location.pathname === link.path
                   ? 'bg-yellow-accent border-black text-black'
                   : 'bg-transparent border-transparent text-purple-dark hover:border-purple-light'

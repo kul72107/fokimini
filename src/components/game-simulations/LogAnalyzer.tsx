@@ -86,11 +86,11 @@ const ATTACK_OPTIONS: { type: AttackType; label: string; icon: React.ElementType
 ];
 
 const LOG_SIMULETOOLS = [
-  'log_timeline',
-  'traffic_monitor',
-  'quarantine_queue',
-  'canary_file',
-  'honeypot_node',
+  'log-analyzer',
+  'network-packet-tracer',
+  'ids-alert',
+  'stego-spy',
+  'phishing-detective',
 ] as const;
 
 // ─── Case Generators ─────────────────────────────────────

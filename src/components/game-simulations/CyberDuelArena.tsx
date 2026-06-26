@@ -137,7 +137,7 @@ const EVENTS: DuelEvent[] = [
     moves: [
       {
         id: 'r1-classify',
-        toolId: 'traffic_monitor',
+        toolId: 'packet-tracer',
         label: 'Classify burst before blocking',
         targetNodeId: 'edge',
         result: 'You separate normal shoppers from noisy retry patterns.',
@@ -151,7 +151,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r1-firewall',
-        toolId: 'firewall_editor',
+        toolId: 'firewall-defender',
         label: 'Limit unknown routes only',
         targetNodeId: 'edge',
         result: 'The rule trims noisy sessions without closing checkout.',
@@ -165,7 +165,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r1-rate',
-        toolId: 'rate_limiter',
+        toolId: 'load-balancer',
         label: 'Apply adaptive rate limit',
         targetNodeId: 'web',
         result: 'Web recovers while normal users keep a slower path.',
@@ -179,7 +179,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r1-honeypot',
-        toolId: 'honeypot_node',
+        toolId: 'ids-alert',
         label: 'Mirror suspicious sessions',
         targetNodeId: 'edge',
         result: 'Suspicious sessions move into a decoy path for evidence.',
@@ -210,7 +210,7 @@ const EVENTS: DuelEvent[] = [
     moves: [
       {
         id: 'r2-dns',
-        toolId: 'dns_monitor',
+        toolId: 'dns-resolver',
         label: 'Compare resolver answers',
         targetNodeId: 'dns',
         result: 'You prove the drift is regional, not service-wide.',
@@ -224,7 +224,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r2-rollback',
-        toolId: 'config_rollback',
+        toolId: 'cert-champion',
         label: 'Rollback DNS config',
         targetNodeId: 'dns',
         result: 'The known-good route returns and API errors drop.',
@@ -238,7 +238,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r2-access',
-        toolId: 'access_policy',
+        toolId: 'access-ace',
         label: 'Pin API ingress policy',
         targetNodeId: 'api',
         result: 'API accepts only expected service paths while drift clears.',
@@ -252,7 +252,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r2-map',
-        toolId: 'dependency_graph',
+        toolId: 'network-navigator',
         label: 'Check DNS blast radius',
         targetNodeId: 'dns',
         result: 'You confirm the drift does not require taking API offline.',
@@ -283,7 +283,7 @@ const EVENTS: DuelEvent[] = [
     moves: [
       {
         id: 'r3-timeline',
-        toolId: 'log_timeline',
+        toolId: 'log-analyzer',
         label: 'Rebuild auth timeline',
         targetNodeId: 'api',
         result: 'You tie the noise to token refresh failures.',
@@ -297,7 +297,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r3-access',
-        toolId: 'access_policy',
+        toolId: 'access-ace',
         label: 'Tighten token refresh path',
         targetNodeId: 'api',
         result: 'Only expected refresh flows reach checkout.',
@@ -311,7 +311,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r3-firewall',
-        toolId: 'firewall_editor',
+        toolId: 'firewall-defender',
         label: 'Allow checkout, block noisy retries',
         targetNodeId: 'edge',
         result: 'Retry storms fall while checkout remains reachable.',
@@ -325,7 +325,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r3-isolate',
-        toolId: 'isolate_node',
+        toolId: 'malware-hunter',
         label: 'Isolate API immediately',
         targetNodeId: 'api',
         result: 'The noise stops, but checkout drops hard.',
@@ -356,7 +356,7 @@ const EVENTS: DuelEvent[] = [
     moves: [
       {
         id: 'r4-canary',
-        toolId: 'canary_file',
+        toolId: 'stego-spy',
         label: 'Check canary access trail',
         targetNodeId: 'storage',
         result: 'The canary trail points to the same narrow object group.',
@@ -370,7 +370,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r4-quarantine',
-        toolId: 'quarantine_queue',
+        toolId: 'ids-alert',
         label: 'Quarantine changed receipts only',
         targetNodeId: 'storage',
         result: 'Receipts are held for review while checkout remains online.',
@@ -384,7 +384,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r4-restore',
-        toolId: 'backup_restore',
+        toolId: 'cert-champion',
         label: 'Restore clean receipt copy',
         targetNodeId: 'storage',
         result: 'Known-good receipts return, but the operation costs time.',
@@ -398,7 +398,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r4-map',
-        toolId: 'network_map',
+        toolId: 'network-navigator',
         label: 'Check storage path exposure',
         targetNodeId: 'storage',
         result: 'You confirm storage is not directly exposed to clients.',
@@ -429,7 +429,7 @@ const EVENTS: DuelEvent[] = [
     moves: [
       {
         id: 'r5-dependency',
-        toolId: 'dependency_graph',
+        toolId: 'network-navigator',
         label: 'Model API to Database blast radius',
         targetNodeId: 'db',
         result: 'You see that isolating Database would break checkout.',
@@ -443,7 +443,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r5-circuit',
-        toolId: 'circuit_breaker',
+        toolId: 'load-balancer',
         label: 'Protect Database with breaker',
         targetNodeId: 'db',
         result: 'Checkout queues gracefully instead of exhausting Database.',
@@ -457,7 +457,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r5-rate',
-        toolId: 'rate_limiter',
+        toolId: 'load-balancer',
         label: 'Shape API retry traffic',
         targetNodeId: 'api',
         result: 'Retry traffic slows and Database pressure drops.',
@@ -471,7 +471,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r5-restart',
-        toolId: 'service_restart',
+        toolId: 'load-balancer',
         label: 'Restart Database service',
         targetNodeId: 'db',
         result: 'The pool clears briefly, but checkout stalls.',
@@ -503,7 +503,7 @@ const EVENTS: DuelEvent[] = [
     moves: [
       {
         id: 'r6-patch',
-        toolId: 'patch_service',
+        toolId: 'malware-hunter',
         label: 'Patch token refresh service',
         targetNodeId: 'api',
         result: 'The refresh path stabilizes for the rest of the duel.',
@@ -517,7 +517,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r6-rollback',
-        toolId: 'config_rollback',
+        toolId: 'cert-champion',
         label: 'Rollback risky control-plane flag',
         targetNodeId: 'api',
         result: 'The API returns to a known stable configuration.',
@@ -531,7 +531,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r6-restart',
-        toolId: 'service_restart',
+        toolId: 'load-balancer',
         label: 'Restart Web workers after policy fix',
         targetNodeId: 'web',
         result: 'Workers clear stale queues after the safer rules are in place.',
@@ -545,7 +545,7 @@ const EVENTS: DuelEvent[] = [
       },
       {
         id: 'r6-honeypot',
-        toolId: 'honeypot_node',
+        toolId: 'ids-alert',
         label: 'Keep decoy monitoring active',
         targetNodeId: 'edge',
         result: 'The decoy keeps collecting signal while production is stable.',
@@ -589,6 +589,81 @@ function toolById(id: string) {
 
 function nodeById(id: string) {
   return SERVICE_NODES.find((node) => node.id === id) ?? SERVICE_NODES[0];
+}
+
+function genericMoveForTool(tool: DuelTool, event: DuelEvent): DuelMove {
+  const base = {
+    id: `${event.id}-${tool.id}`,
+    toolId: tool.id,
+    targetNodeId: event.primaryNodeId,
+    label: `Apply ${tool.name}`,
+    result: tool.strength,
+    lesson: `${tool.training}: ${tool.blindSpot}`,
+  };
+
+  switch (tool.category) {
+    case 'map':
+      return {
+        ...base,
+        uptime: 4,
+        threat: 4,
+        diagnosis: 11,
+        falsePositive: 0,
+        resource: -tool.energy,
+        nodeStatus: 'explained',
+      };
+    case 'sensor':
+      return {
+        ...base,
+        uptime: 2,
+        threat: 7,
+        diagnosis: 12,
+        falsePositive: 0,
+        resource: -tool.energy,
+        nodeStatus: 'classified',
+      };
+    case 'policy':
+      return {
+        ...base,
+        uptime: 7,
+        threat: 8,
+        diagnosis: 5,
+        falsePositive: 3,
+        resource: -tool.energy,
+        nodeStatus: 'guarded',
+      };
+    case 'response':
+      return {
+        ...base,
+        uptime: 5,
+        threat: 10,
+        diagnosis: 4,
+        falsePositive: 5,
+        resource: -tool.energy,
+        nodeStatus: 'contained',
+      };
+    case 'recovery':
+      return {
+        ...base,
+        uptime: 10,
+        threat: 4,
+        diagnosis: 4,
+        falsePositive: 1,
+        resource: -tool.energy,
+        nodeStatus: 'stable',
+      };
+    case 'special':
+    default:
+      return {
+        ...base,
+        uptime: 5,
+        threat: 8,
+        diagnosis: 8,
+        falsePositive: 1,
+        resource: -tool.energy,
+        nodeStatus: 'watching',
+      };
+  }
 }
 
 function categoryIcon(category: ToolCategory) {
@@ -678,8 +753,14 @@ export default function CyberDuelArena({ onScoreChange }: Props) {
 
   const availableMoves = useMemo(() => {
     const matching = currentEvent.moves.filter((move) => selectedToolIds.includes(move.toolId));
+    const matchedToolIds = new Set(matching.map((move) => move.toolId));
+    const generated = selectedToolIds
+      .filter((toolId) => !matchedToolIds.has(toolId))
+      .map((toolId) => genericMoveForTool(toolById(toolId), currentEvent));
+
     return [
       ...matching,
+      ...generated,
       {
         id: `fallback-${currentEvent.id}`,
         toolId: 'manual_review',

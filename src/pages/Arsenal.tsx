@@ -550,10 +550,18 @@ function getDefaultUnlockedIds(): number[] {
 function getUnlockedToolIds(): number[] {
   try {
     const raw = localStorage.getItem(TOOLS_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    const arsenalIds = raw ? JSON.parse(raw) : [];
+    const battleIds = localAuth.getInventory();
+    const merged = Array.from(new Set([...arsenalIds, ...battleIds])).sort((a, b) => a - b);
+    if (merged.length > 0) {
+      localStorage.setItem(TOOLS_STORAGE_KEY, JSON.stringify(merged));
+      localStorage.setItem('cyberpaw_inventory', JSON.stringify(merged));
+      return merged;
+    }
   } catch { /* ignore */ }
   const defaults = getDefaultUnlockedIds();
   localStorage.setItem(TOOLS_STORAGE_KEY, JSON.stringify(defaults));
+  localStorage.setItem('cyberpaw_inventory', JSON.stringify(defaults));
   return defaults;
 }
 
@@ -561,7 +569,9 @@ function unlockTool(toolId: number): boolean {
   const ids = getUnlockedToolIds();
   if (ids.includes(toolId)) return false;
   ids.push(toolId);
-  localStorage.setItem(TOOLS_STORAGE_KEY, JSON.stringify(ids));
+  const sorted = ids.sort((a, b) => a - b);
+  localStorage.setItem(TOOLS_STORAGE_KEY, JSON.stringify(sorted));
+  localAuth.addTool(toolId);
   return true;
 }
 
@@ -702,7 +712,7 @@ export default function Arsenal() {
             <div className="flex items-center gap-2 bg-white border-[3px] border-black rounded-xl px-4 py-2">
               <Zap size={18} strokeWidth={2.5} color="#FACC15" />
               <span className="font-nunito font-bold text-sm text-purple-darker">
-                Tools Owned: <span className="text-purple-primary">{toolsOwned}/33</span>
+                Tools Owned: <span className="text-purple-primary">{toolsOwned}/{ALL_TOOLS.length}</span>
               </span>
             </div>
             <div className="flex items-center gap-2 bg-white border-[3px] border-black rounded-xl px-4 py-2">

@@ -179,7 +179,7 @@ export const localAuth = {
   getStats() {
     return JSON.parse(localStorage.getItem('cyberpaw_stats') || JSON.stringify({
       gamesPlayed: 0, gamesCompleted: 0, attacksLaunched: 0,
-      attacksDefended: 0, toolsUnlocked: 3, duelsWon: 0, duelsLost: 0,
+      attacksDefended: 0, toolsUnlocked: 5, duelsWon: 0, duelsLost: 0,
       rankPoints: 100, currentStreak: 0, bestStreak: 0,
     }));
   },
@@ -238,9 +238,9 @@ export const localAuth = {
   // Inventory
   getInventory(): number[] {
     try {
-      return JSON.parse(localStorage.getItem('cyberpaw_inventory') || '[1,2,3]');
+      return JSON.parse(localStorage.getItem('cyberpaw_inventory') || '[1,2,3,4,5]');
     } catch {
-      return [1, 2, 3]; // Default: port_scanner, dns_lookup, firewall_config
+      return [1, 2, 3, 4, 5];
     }
   },
 
@@ -256,7 +256,7 @@ export const localAuth = {
     if (!localStorage.getItem('cyberpaw_stats')) {
       localStorage.setItem('cyberpaw_stats', JSON.stringify({
         gamesPlayed: 0, gamesCompleted: 0, attacksLaunched: 0,
-        attacksDefended: 0, toolsUnlocked: 3, duelsWon: 0, duelsLost: 0,
+        attacksDefended: 0, toolsUnlocked: 5, duelsWon: 0, duelsLost: 0,
         rankPoints: 100, currentStreak: 0, bestStreak: 0,
       }));
     }
@@ -268,7 +268,7 @@ export const localAuth = {
       }));
     }
     if (!localStorage.getItem('cyberpaw_inventory')) {
-      localStorage.setItem('cyberpaw_inventory', '[1,2,3]');
+      localStorage.setItem('cyberpaw_inventory', '[1,2,3,4,5]');
     }
     if (!localStorage.getItem('cyberpaw_xp_logs')) {
       localStorage.setItem('cyberpaw_xp_logs', JSON.stringify([{

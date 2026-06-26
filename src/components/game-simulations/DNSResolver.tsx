@@ -123,10 +123,10 @@ const LEVELS: DomainLevel[] = [
 ];
 
 const DNS_SIMULETOOLS = [
-  'dns_monitor',
-  'network_map',
-  'dependency_graph',
-  'config_rollback',
+  'dns-resolver',
+  'dns-lookup-gui',
+  'network-navigator',
+  'packet-tracer',
 ] as const;
 
 const ICON_MAP: Record<string, React.ReactNode> = {
