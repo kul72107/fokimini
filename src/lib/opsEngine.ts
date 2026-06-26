@@ -78,6 +78,9 @@ export interface OpsActionOutcome {
   created: OpsEffect[];
   message: string;
   counter?: string;
+  counterEffect?: OpsEffect;
+  counterDescription?: string;
+  counterMiniGame?: string;
 }
 
 export interface OpsMatchSummary {
@@ -95,6 +98,140 @@ export interface ToolOpsProfile {
   effects: OpsEffect[];
   stability: number;
 }
+
+export interface OpsDefenseControl {
+  id: string;
+  name: string;
+  layer: string;
+  provider: string;
+  protects: OpsEffect[];
+  strength: number;
+  description: string;
+  miniGame: string;
+}
+
+export const OPS_DEFENSE_CONTROLS: OpsDefenseControl[] = [
+  {
+    id: 'waf-rule-forge',
+    name: 'WAF Rule Forge',
+    layer: 'Web App',
+    provider: 'Fortress WAF',
+    protects: ['waf', 'patch', 'web', 'sql', 'xss'],
+    strength: 8,
+    description: 'Builds narrow web rules for SQL, XSS, upload, and content guard stages.',
+    miniGame: 'Tune allow/deny patterns without blocking normal visitors.',
+  },
+  {
+    id: 'patch-lab',
+    name: 'Patch Lab',
+    layer: 'Application',
+    provider: 'Secure Build Pipeline',
+    protects: ['patch', 'web', 'sql', 'xss', 'session'],
+    strength: 7,
+    description: 'Applies focused fixes to vulnerable forms, sessions, plugins, and config paths.',
+    miniGame: 'Choose the smallest patch that closes the active exploit path.',
+  },
+  {
+    id: 'edr-behavior-shield',
+    name: 'EDR Behavior Shield',
+    layer: 'Endpoint',
+    provider: '3rd Party EDR',
+    protects: ['edr', 'malware', 'payload', 'endpoint', 'persistence'],
+    strength: 8,
+    description: 'Watches behavior instead of only signatures, catching payload staging and persistence.',
+    miniGame: 'Classify process, registry, and network behaviors before the payload stabilizes.',
+  },
+  {
+    id: 'av-sandbox',
+    name: 'AV Sandbox Detonation',
+    layer: 'Endpoint',
+    provider: 'Antivirus Suite',
+    protects: ['edr', 'malware', 'payload'],
+    strength: 6,
+    description: 'Runs suspicious files in a safe sandbox before they touch the user workflow.',
+    miniGame: 'Compare file behavior against safe baseline actions.',
+  },
+  {
+    id: 'firewall-policy-board',
+    name: 'Firewall Policy Board',
+    layer: 'Network',
+    provider: 'Fortress Firewall',
+    protects: ['firewall', 'network', 'traffic', 'proxy'],
+    strength: 7,
+    description: 'Blocks unsafe routes, tunnels, and traffic pressure while keeping core services alive.',
+    miniGame: 'Place rule cards in the right order before the attacker finds a route.',
+  },
+  {
+    id: 'dns-integrity-guard',
+    name: 'DNS Integrity Guard',
+    layer: 'Name Resolution',
+    provider: 'DNSSEC Watch',
+    protects: ['dns', 'cert', 'web'],
+    strength: 7,
+    description: 'Detects local pharming, poisoned answers, and suspicious resolver drift.',
+    miniGame: 'Compare expected records, resolver answers, and local host entries.',
+  },
+  {
+    id: 'certificate-pin-watch',
+    name: 'Certificate Pin Watch',
+    layer: 'Trust',
+    provider: 'Browser Trust Monitor',
+    protects: ['cert', 'crypto', 'web', 'session'],
+    strength: 6,
+    description: 'Flags fake-site redirects and session interception with certificate mismatch checks.',
+    miniGame: 'Match issuer, fingerprint, host, and expiry before accepting the site.',
+  },
+  {
+    id: 'token-revoker',
+    name: 'Token Revoker',
+    layer: 'Identity',
+    provider: 'IAM Console',
+    protects: ['session', 'credential', 'log'],
+    strength: 7,
+    description: 'Revokes stolen cookies, API keys, and temporary sessions before they become pivots.',
+    miniGame: 'Pick the exact token family to revoke without logging out safe users.',
+  },
+  {
+    id: 'log-correlator',
+    name: 'Log Correlator',
+    layer: 'Monitoring',
+    provider: 'SIEM Lite',
+    protects: ['log', 'traffic', 'osint', 'recon'],
+    strength: 6,
+    description: 'Turns scattered DNS, login, endpoint, and web clues into one defense decision.',
+    miniGame: 'Connect matching events across time without chasing decoys.',
+  },
+  {
+    id: 'backup-restore-drill',
+    name: 'Backup Restore Drill',
+    layer: 'Recovery',
+    provider: 'Backup Vault',
+    protects: ['backup', 'exfil', 'defense'],
+    strength: 5,
+    description: 'Verifies backup integrity and cuts off dump paths or ransomware pressure.',
+    miniGame: 'Restore the clean snapshot while preserving recent safe changes.',
+  },
+  {
+    id: 'browser-popup-guard',
+    name: 'Browser Popup Guard',
+    layer: 'Browser',
+    provider: '3rd Party Browser Shield',
+    protects: ['web', 'payload', 'social', 'proxy'],
+    strength: 5,
+    description: 'Blocks unsafe popups, fake prompts, and redirect tricks before users interact.',
+    miniGame: 'Allow legitimate prompts and block deceptive overlays.',
+  },
+  {
+    id: 'deception-honeypot',
+    name: 'Deception Honeypot',
+    layer: 'Trap',
+    provider: 'Fortress Decoys',
+    protects: ['stealth', 'recon', 'network', 'malware'],
+    strength: 6,
+    description: 'Creates believable decoys that waste attacker steps and reveal their route.',
+    miniGame: 'Pick a decoy that matches the attacker objective closely enough.',
+  },
+];
 
 export const OPS_OBJECTIVES: OpsObjective[] = [
   {
@@ -702,6 +839,26 @@ function hasAnyEffect(profile: ToolOpsProfile, accepts: OpsEffect[]) {
   return profile.effects.some((effect) => accepts.includes(effect));
 }
 
+export function getDefenseControlsForEffects(effects: OpsEffect[], target?: BattleTarget): OpsDefenseControl[] {
+  const targetBoost = target ? Math.min(3, Math.floor(target.defensePower / 45)) : 0;
+  return OPS_DEFENSE_CONTROLS
+    .filter((control) => control.protects.some((effect) => effects.includes(effect)))
+    .map((control) => ({ ...control, strength: control.strength + targetBoost }))
+    .sort((a, b) => b.strength - a.strength || a.name.localeCompare(b.name));
+}
+
+export function getDefenseControlsForStep(step: OpsStep | null, target?: BattleTarget): OpsDefenseControl[] {
+  if (!step) return [];
+  return getDefenseControlsForEffects(step.defenderCounters, target).slice(0, 6);
+}
+
+function pickDefenseControl(counter: OpsEffect, target: BattleTarget): OpsDefenseControl {
+  const candidates = getDefenseControlsForEffects([counter], target);
+  if (candidates.length === 0) return OPS_DEFENSE_CONTROLS[0];
+  const topWindow = candidates.slice(0, Math.min(candidates.length, target.defensePower > 70 ? 4 : 2));
+  return topWindow[Math.floor(Math.random() * topWindow.length)];
+}
+
 export function resolveOpsAction({
   objective,
   progress,
@@ -750,6 +907,7 @@ export function resolveOpsAction({
 
   if (blocked) {
     const counter = nextStep.defenderCounters[Math.floor(Math.random() * nextStep.defenderCounters.length)];
+    const defenseControl = pickDefenseControl(counter, target);
     return {
       status: 'blocked',
       objectiveId: objective.id,
@@ -757,8 +915,11 @@ export function resolveOpsAction({
       toolId: tool.id,
       points: 12,
       created: [],
-      counter: getEffectLabel(counter),
-      message: `${target.displayName}'s ${getEffectLabel(counter)} control interrupted ${tool.name}. Try another route or a steadier tool.`,
+      counter: defenseControl.name,
+      counterEffect: counter,
+      counterDescription: defenseControl.description,
+      counterMiniGame: defenseControl.miniGame,
+      message: `${target.displayName}'s ${defenseControl.name} interrupted ${tool.name}. ${defenseControl.miniGame}`,
     };
   }
 

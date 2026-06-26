@@ -32,6 +32,7 @@ import {
   OPS_OBJECTIVES,
   createInitialOpsProgress,
   getCreatedEffects,
+  getDefenseControlsForStep,
   getEffectLabel,
   getNextOpsStep,
   getRecommendedTools,
@@ -44,6 +45,7 @@ import {
   type OpsMatchSummary,
   type OpsObjective,
   type OpsProgress,
+  type OpsDefenseControl,
 } from '@/lib/opsEngine';
 
 export type { OpsMatchSummary };
@@ -164,6 +166,7 @@ export function OpsBattleMode({
   const selectedProgress = progressMap[selectedObjective.id];
   const nextStep = getNextOpsStep(selectedObjective, selectedProgress);
   const suggestedTools = useMemo(() => getSuggestedTools(nextStep, ownedIds), [nextStep, ownedIds]);
+  const activeDefenseControls = useMemo(() => getDefenseControlsForStep(nextStep, target), [nextStep, target]);
 
   const pinnedEffects = useMemo(() => {
     const effects = new Set<OpsEffect>();
@@ -337,7 +340,10 @@ export function OpsBattleMode({
           />
         </div>
 
-        <Timeline events={timeline} />
+        <div className="space-y-5">
+          <DefenderPlaybook controls={activeDefenseControls} target={target} />
+          <Timeline events={timeline} />
+        </div>
       </div>
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -526,9 +532,9 @@ function ObjectiveDetail({
                   <h3 className="font-fredoka text-base font-black text-purple-darker">{step.title}</h3>
                   <p className="font-nunito text-xs font-bold text-purple-dark">{complete ? step.result : `Accepts: ${step.accepts.map(getEffectLabel).join(', ')}`}</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {step.defenderCounters.map((counter) => (
-                      <span key={counter} className="rounded-full border border-black bg-white px-2 py-0.5 font-nunito text-[9px] font-black uppercase text-purple-darker">
-                        {getEffectLabel(counter)} can stop it
+                    {getDefenseControlsForStep(step).slice(0, 3).map((control) => (
+                      <span key={control.id} className="rounded-full border border-black bg-white px-2 py-0.5 font-nunito text-[9px] font-black uppercase text-purple-darker">
+                        {control.name}
                       </span>
                     ))}
                   </div>
@@ -544,6 +550,60 @@ function ObjectiveDetail({
           <p className="font-fredoka text-lg font-black text-black">Objective complete: {objective.result}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+function DefenderPlaybook({
+  controls,
+  target,
+}: {
+  controls: OpsDefenseControl[];
+  target: BattleTarget;
+}) {
+  return (
+    <div className="rounded-2xl border-4 border-black bg-white p-4 card-shadow">
+      <div className="mb-3 flex items-center gap-2">
+        <ShieldCheck size={20} strokeWidth={3} className="text-green-success" />
+        <h2 className="font-fredoka text-xl font-black text-purple-darker">Defender Playbook</h2>
+      </div>
+      <p className="mb-3 font-nunito text-xs font-bold text-purple-dark">
+        {target.displayName} can interrupt the active step with specific controls, not only a generic firewall.
+      </p>
+      <div className="space-y-2">
+        {controls.length === 0 ? (
+          <div className="rounded-xl border-[3px] border-black bg-purple-pale p-3 text-center">
+            <p className="font-nunito text-sm font-bold text-purple-light">No active step selected.</p>
+          </div>
+        ) : (
+          controls.map((control) => <DefenseControlCard key={control.id} control={control} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DefenseControlCard({ control }: { control: OpsDefenseControl }) {
+  return (
+    <div className="rounded-xl border-[3px] border-black bg-purple-pale p-3">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border-2 border-black bg-green-success">
+          <Shield size={18} strokeWidth={3} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="font-fredoka text-sm font-black text-purple-darker">{control.name}</h3>
+            <span className="rounded-full border border-black bg-white px-2 py-0.5 font-nunito text-[8px] font-black uppercase text-purple-dark">
+              {control.layer}
+            </span>
+          </div>
+          <p className="mt-1 font-nunito text-[11px] font-bold text-purple-dark">{control.description}</p>
+          <p className="mt-1 font-nunito text-[10px] font-black text-purple-primary">{control.miniGame}</p>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {control.protects.slice(0, 4).map((effect) => <EffectBadge key={effect} effect={effect} />)}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
