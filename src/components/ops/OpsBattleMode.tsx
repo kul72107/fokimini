@@ -31,7 +31,7 @@ import {
 import {
   OPS_OBJECTIVES,
   createInitialOpsProgress,
-  getCreatedEffects,
+  getAllCreatedEffects,
   getDefenseControlsForStep,
   getEffectLabel,
   getNextOpsStep,
@@ -126,9 +126,9 @@ function getObjectiveState(objective: OpsObjective, progress: OpsProgress) {
   };
 }
 
-function getSuggestedTools(step: ReturnType<typeof getNextOpsStep>, ownedIds: Set<number>) {
+function getSuggestedTools(step: ReturnType<typeof getNextOpsStep>, ownedIds: Set<number>, availableEffects: OpsEffect[]) {
   if (!step) return [];
-  const recommended = getRecommendedTools(step);
+  const recommended = getRecommendedTools(step, availableEffects);
   const ownedRecommended = recommended.filter((tool) => ownedIds.has(tool.id));
   const borrowedRecommended = recommended.filter((tool) => !ownedIds.has(tool.id));
   const ownedWildcards = ALL_TOOLS
@@ -165,21 +165,16 @@ export function OpsBattleMode({
   const selectedObjective = OPS_OBJECTIVES.find((objective) => objective.id === selectedObjectiveId) ?? OPS_OBJECTIVES[0];
   const selectedProgress = progressMap[selectedObjective.id];
   const nextStep = getNextOpsStep(selectedObjective, selectedProgress);
-  const suggestedTools = useMemo(() => getSuggestedTools(nextStep, ownedIds), [nextStep, ownedIds]);
+  const pinnedEffects = useMemo(() => getAllCreatedEffects(progressMap), [progressMap]);
+  const suggestedTools = useMemo(() => getSuggestedTools(nextStep, ownedIds, pinnedEffects), [nextStep, ownedIds, pinnedEffects]);
   const activeDefenseControls = useMemo(() => getDefenseControlsForStep(nextStep, target), [nextStep, target]);
-
-  const pinnedEffects = useMemo(() => {
-    const effects = new Set<OpsEffect>();
-    OPS_OBJECTIVES.forEach((objective) => {
-      getCreatedEffects(objective, progressMap[objective.id]).forEach((effect) => effects.add(effect));
-    });
-    return [...effects];
-  }, [progressMap]);
 
   const completedCount = OPS_OBJECTIVES.filter((objective) => {
     const progress = progressMap[objective.id];
     return progress.completedSteps.length >= objective.steps.length;
   }).length;
+  const completedSteps = Object.values(progressMap).reduce((sum, progress) => sum + progress.completedSteps.length, 0);
+  const totalSteps = OPS_OBJECTIVES.reduce((sum, objective) => sum + objective.steps.length, 0);
 
   const attackerScore = Object.values(progressMap).reduce((sum, progress) => sum + progress.score, 0);
   const blockedActions = Object.values(progressMap).reduce((sum, progress) => sum + progress.blocked, 0);
@@ -216,6 +211,7 @@ export function OpsBattleMode({
       tool,
       target,
       isOwned: ownedIds.has(tool.id),
+      availableEffects: pinnedEffects,
     });
 
     setProgressMap((current) => {
@@ -275,9 +271,10 @@ export function OpsBattleMode({
               </p>
             </div>
           </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <div className="mt-4 grid gap-2 sm:grid-cols-4">
             <StatPill icon={<Clock size={16} strokeWidth={3} />} label="Time" value={formatTime(secondsLeft)} color="#FACC15" />
             <StatPill icon={<Target size={16} strokeWidth={3} />} label="Objectives" value={`${completedCount}/${OPS_OBJECTIVES.length}`} color="#4ADE80" />
+            <StatPill icon={<Activity size={16} strokeWidth={3} />} label="Steps" value={`${completedSteps}/${totalSteps}`} color="#60A5FA" />
             <StatPill icon={<Zap size={16} strokeWidth={3} />} label="Score" value={attackerScore.toString()} color="#A78BFA" />
           </div>
         </div>
@@ -309,12 +306,12 @@ export function OpsBattleMode({
         <div className="rounded-2xl border-4 border-black bg-white p-5 card-shadow">
           <div className="flex items-center gap-2">
             <Sparkles size={20} strokeWidth={3} className="text-purple-primary" />
-            <h2 className="font-fredoka text-xl font-black text-purple-darker">Pinned Effects</h2>
+            <h2 className="font-fredoka text-xl font-black text-purple-darker">Operation Assets</h2>
           </div>
           <div className="mt-3 flex min-h-[92px] flex-wrap content-start gap-2">
             {pinnedEffects.length === 0 ? (
               <p className="font-nunito text-sm font-bold text-purple-light">
-                Complete steps to pin access, payload, defense, and intel effects.
+                Completed steps will pin access, payload, defense, and intel effects for later objectives.
               </p>
             ) : (
               pinnedEffects.map((effect) => <EffectBadge key={effect} effect={effect} />)
@@ -336,6 +333,7 @@ export function OpsBattleMode({
             nextStep={nextStep}
             suggestedTools={suggestedTools}
             ownedIds={ownedIds}
+            availableEffects={pinnedEffects}
             onUseTool={handleToolUse}
           />
         </div>
@@ -632,13 +630,18 @@ function ToolRunner({
   nextStep,
   suggestedTools,
   ownedIds,
+  availableEffects,
   onUseTool,
 }: {
   nextStep: ReturnType<typeof getNextOpsStep>;
   suggestedTools: AttackTool[];
   ownedIds: Set<number>;
+  availableEffects: OpsEffect[];
   onUseTool: (tool: AttackTool) => void;
 }) {
+  const neededEffects = nextStep?.accepts ?? [];
+  const bridgedEffects = availableEffects.filter((effect) => neededEffects.includes(effect));
+
   return (
     <div className="rounded-2xl border-4 border-black bg-white p-5 card-shadow">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -648,7 +651,7 @@ function ToolRunner({
         </div>
         {nextStep && (
           <span className="rounded-full border-2 border-black bg-purple-pale px-3 py-1 font-nunito text-[10px] font-black uppercase text-purple-darker">
-            Need {nextStep.accepts.map(getEffectLabel).join(' / ')}
+            Need {neededEffects.map(getEffectLabel).join(' / ')}
           </span>
         )}
       </div>
@@ -664,7 +667,8 @@ function ToolRunner({
             const profile = getToolOpsProfile(tool);
             const owned = ownedIds.has(tool.id);
             const color = TOOL_CATEGORY_COLORS[tool.category] || '#7C3AED';
-            const matches = profile.effects.some((effect) => nextStep.accepts.includes(effect));
+            const directMatches = profile.effects.some((effect) => neededEffects.includes(effect));
+            const bridgeMatches = !directMatches && bridgedEffects.length > 0;
             return (
               <button
                 key={tool.id}
@@ -676,18 +680,28 @@ function ToolRunner({
                     className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border-2 border-black"
                     style={{ backgroundColor: color }}
                   >
-                    {matches ? <Activity size={20} strokeWidth={3} /> : <Eye size={20} strokeWidth={3} />}
+                    {directMatches ? <Activity size={20} strokeWidth={3} /> : <Eye size={20} strokeWidth={3} />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="truncate font-fredoka text-sm font-black text-purple-darker">{tool.name}</h3>
-                      <span className={`rounded-full border border-black px-1.5 py-0.5 font-nunito text-[8px] font-black ${owned ? 'bg-green-success text-black' : 'bg-white text-purple-dark'}`}>
-                        {owned ? 'OWNED' : 'LAB'}
-                      </span>
+                      <div className="flex flex-shrink-0 gap-1">
+                        {bridgeMatches && (
+                          <span className="rounded-full border border-black bg-yellow-accent px-1.5 py-0.5 font-nunito text-[8px] font-black text-black">
+                            BRIDGE
+                          </span>
+                        )}
+                        <span className={`rounded-full border border-black px-1.5 py-0.5 font-nunito text-[8px] font-black ${owned ? 'bg-green-success text-black' : 'bg-white text-purple-dark'}`}>
+                          {owned ? 'OWNED' : 'LAB'}
+                        </span>
+                      </div>
                     </div>
                     <p className="mt-1 line-clamp-2 font-nunito text-[11px] font-bold text-purple-dark">{tool.description}</p>
                     <div className="mt-2 flex flex-wrap gap-1">
                       {profile.effects.slice(0, 4).map((effect) => <EffectBadge key={effect} effect={effect} />)}
+                      {bridgeMatches && bridgedEffects.slice(0, 2).map((effect) => (
+                        <EffectBadge key={`bridge-${tool.id}-${effect}`} effect={effect} />
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -746,6 +760,13 @@ function TimelineRow({ event }: { event: TimelineEvent }) {
         <span className="truncate font-nunito text-[10px] font-black text-purple-primary">{event.objectiveTitle}</span>
       </div>
       <p className="font-nunito text-xs font-bold text-purple-darker">{event.message}</p>
+      {event.bridgeEffects && event.bridgeEffects.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {event.bridgeEffects.map((effect) => (
+            <EffectBadge key={`${event.id}-${effect}`} effect={effect} />
+          ))}
+        </div>
+      )}
       <p className="mt-1 font-nunito text-[10px] font-black text-purple-light">
         {event.toolName} · +{event.points} pts
       </p>
@@ -787,8 +808,9 @@ export function OpsResultPanel({
         </p>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-4">
+      <div className="mt-5 grid gap-3 sm:grid-cols-5">
         <ResultStat label="Objectives" value={`${summary.completedObjectives}/${summary.totalObjectives}`} icon={<Target size={20} strokeWidth={3} />} />
+        <ResultStat label="Step Progress" value={`${summary.completedSteps}/${summary.totalSteps}`} icon={<Activity size={20} strokeWidth={3} />} />
         <ResultStat label="Attack Score" value={summary.attackerScore.toString()} icon={<Flame size={20} strokeWidth={3} />} />
         <ResultStat label="Defense Score" value={summary.defenderScore.toString()} icon={<Shield size={20} strokeWidth={3} />} />
         <ResultStat label="Blocked" value={summary.blockedActions.toString()} icon={<XCircle size={20} strokeWidth={3} />} />
@@ -810,6 +832,21 @@ export function OpsResultPanel({
           )}
         </div>
       </div>
+
+      {summary.partialObjectives > 0 && (
+        <div className="mt-5 rounded-2xl border-4 border-black bg-purple-pale p-5 card-shadow">
+          <h2 className="font-fredoka text-xl font-black text-purple-darker">
+            Partial Chains · {summary.progressPercent}% total progress
+          </h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {summary.partialTitles.map((title) => (
+              <span key={title} className="rounded-full border-2 border-black bg-yellow-accent px-3 py-1 font-nunito text-xs font-black text-black">
+                {title}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
         <button

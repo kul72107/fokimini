@@ -76,6 +76,7 @@ export interface OpsActionOutcome {
   toolId: number;
   points: number;
   created: OpsEffect[];
+  bridgeEffects?: OpsEffect[];
   message: string;
   counter?: string;
   counterEffect?: OpsEffect;
@@ -86,11 +87,16 @@ export interface OpsActionOutcome {
 export interface OpsMatchSummary {
   completedObjectives: number;
   totalObjectives: number;
+  completedSteps: number;
+  totalSteps: number;
+  partialObjectives: number;
+  progressPercent: number;
   attackerScore: number;
   defenderScore: number;
   blockedActions: number;
   winner: 'attacker' | 'defender';
   completedTitles: string[];
+  partialTitles: string[];
 }
 
 export interface ToolOpsProfile {
@@ -759,6 +765,22 @@ export function getEffectLabel(effect: OpsEffect): string {
   return EFFECT_LABELS[effect];
 }
 
+const BRIDGE_OPERATOR_EFFECTS: OpsEffect[] = [
+  'recon',
+  'osint',
+  'log',
+  'traffic',
+  'proxy',
+  'session',
+  'credential',
+  'web',
+  'network',
+  'defense',
+  'patch',
+  'cert',
+  'crypto',
+];
+
 export function createInitialOpsProgress(): Record<string, OpsProgress> {
   return Object.fromEntries(
     OPS_OBJECTIVES.map((objective) => [
@@ -825,18 +847,42 @@ export function getCreatedEffects(objective: OpsObjective, progress: OpsProgress
   return [...created];
 }
 
-export function getRecommendedTools(step: OpsStep | null): AttackTool[] {
-  if (!step) return [];
-  return ALL_TOOLS
-    .filter((tool) => {
-      const profile = getToolOpsProfile(tool);
-      return profile.effects.some((effect) => step.accepts.includes(effect));
-    })
-    .slice(0, 10);
+export function getAllCreatedEffects(progressMap: Record<string, OpsProgress>): OpsEffect[] {
+  const created = new Set<OpsEffect>();
+  OPS_OBJECTIVES.forEach((objective) => {
+    getCreatedEffects(objective, progressMap[objective.id]).forEach((effect) => created.add(effect));
+  });
+  return [...created];
 }
 
-function hasAnyEffect(profile: ToolOpsProfile, accepts: OpsEffect[]) {
-  return profile.effects.some((effect) => accepts.includes(effect));
+function getMatchingEffects(effects: OpsEffect[], accepts: OpsEffect[]) {
+  return effects.filter((effect) => accepts.includes(effect));
+}
+
+function canUseBridgeOperator(profile: ToolOpsProfile, step: OpsStep) {
+  return profile.effects.some(
+    (effect) => step.creates.includes(effect) || BRIDGE_OPERATOR_EFFECTS.includes(effect),
+  );
+}
+
+export function getRecommendedTools(step: OpsStep | null, availableEffects: OpsEffect[] = []): AttackTool[] {
+  if (!step) return [];
+  const bridgeAvailable = getMatchingEffects(availableEffects, step.accepts).length > 0;
+  return ALL_TOOLS
+    .map((tool) => {
+      const profile = getToolOpsProfile(tool);
+      const direct = getMatchingEffects(profile.effects, step.accepts).length > 0;
+      const bridge = bridgeAvailable && canUseBridgeOperator(profile, step);
+      return { tool, direct, bridge, tier: tool.tier, power: tool.power };
+    })
+    .filter((candidate) => candidate.direct || candidate.bridge)
+    .sort((a, b) => {
+      if (a.direct !== b.direct) return a.direct ? -1 : 1;
+      if (a.bridge !== b.bridge) return a.bridge ? -1 : 1;
+      return b.tier - a.tier || b.power - a.power;
+    })
+    .map((candidate) => candidate.tool)
+    .slice(0, 10);
 }
 
 export function getDefenseControlsForEffects(effects: OpsEffect[], target?: BattleTarget): OpsDefenseControl[] {
@@ -865,12 +911,14 @@ export function resolveOpsAction({
   tool,
   target,
   isOwned,
+  availableEffects = [],
 }: {
   objective: OpsObjective;
   progress: OpsProgress;
   tool: AttackTool;
   target: BattleTarget;
   isOwned: boolean;
+  availableEffects?: OpsEffect[];
 }): OpsActionOutcome {
   const nextStep = getNextOpsStep(objective, progress);
   const profile = getToolOpsProfile(tool);
@@ -886,7 +934,12 @@ export function resolveOpsAction({
     };
   }
 
-  if (!hasAnyEffect(profile, nextStep.accepts)) {
+  const directMatches = getMatchingEffects(profile.effects, nextStep.accepts);
+  const bridgeMatches = getMatchingEffects(availableEffects, nextStep.accepts)
+    .filter((effect) => !profile.effects.includes(effect));
+  const bridgeAllowed = bridgeMatches.length > 0 && canUseBridgeOperator(profile, nextStep);
+
+  if (directMatches.length === 0 && !bridgeAllowed) {
     return {
       status: 'off_path',
       objectiveId: objective.id,
@@ -898,11 +951,14 @@ export function resolveOpsAction({
     };
   }
 
-  const counterHit = nextStep.defenderCounters.some((counter) => profile.effects.includes(counter));
+  const combinedEffects = [...new Set([...profile.effects, ...bridgeMatches])];
+  const bridgeOnly = directMatches.length === 0 && bridgeAllowed;
+  const counterHit = nextStep.defenderCounters.some((counter) => combinedEffects.includes(counter));
   const defensePressure = Math.min(48, Math.max(8, target.defensePower / 5 + objective.risk / 5));
   const ownedBonus = isOwned ? 10 : 0;
   const stabilityBonus = profile.stability * 4;
-  const blockChance = Math.max(6, Math.min(44, defensePressure - stabilityBonus - ownedBonus + (counterHit ? 8 : 0)));
+  const bridgeRisk = bridgeOnly ? 7 : bridgeMatches.length > 0 ? 3 : 0;
+  const blockChance = Math.max(6, Math.min(44, defensePressure - stabilityBonus - ownedBonus + (counterHit ? 8 : 0) + bridgeRisk));
   const blocked = Math.random() * 100 < blockChance;
 
   if (blocked) {
@@ -915,6 +971,7 @@ export function resolveOpsAction({
       toolId: tool.id,
       points: 12,
       created: [],
+      bridgeEffects: bridgeMatches,
       counter: defenseControl.name,
       counterEffect: counter,
       counterDescription: defenseControl.description,
@@ -924,8 +981,13 @@ export function resolveOpsAction({
   }
 
   const stepIndex = objective.steps.findIndex((step) => step.id === nextStep.id);
-  const points = Math.round(objective.reward / objective.steps.length + tool.power / 3 + (isOwned ? 18 : 6));
+  const bridgeBonus = bridgeMatches.length > 0 ? 14 : 0;
+  const bridgePenalty = bridgeOnly ? 16 : 0;
+  const points = Math.round(objective.reward / objective.steps.length + tool.power / 3 + (isOwned ? 18 : 6) + bridgeBonus - bridgePenalty);
   const completed = stepIndex === objective.steps.length - 1;
+  const bridgeText = bridgeMatches.length > 0
+    ? ` using pinned ${bridgeMatches.map(getEffectLabel).join(' + ')} access`
+    : '';
 
   return {
     status: 'complete',
@@ -934,9 +996,10 @@ export function resolveOpsAction({
     toolId: tool.id,
     points: completed ? points + Math.round(objective.reward * 0.25) : points,
     created: nextStep.creates,
+    bridgeEffects: bridgeMatches,
     message: completed
-      ? `${objective.result} achieved through ${tool.name}.`
-      : `${nextStep.result}. ${tool.name} opened the next operation step.`,
+      ? `${objective.result} achieved through ${tool.name}${bridgeText}.`
+      : `${nextStep.result}. ${tool.name}${bridgeText} opened the next operation step.`,
   };
 }
 
@@ -948,18 +1011,30 @@ export function summarizeOpsProgress(
     const progress = progressMap[objective.id];
     return progress && progress.completedSteps.length >= objective.steps.length;
   });
+  const partial = OPS_OBJECTIVES.filter((objective) => {
+    const progress = progressMap[objective.id];
+    return progress && progress.completedSteps.length > 0 && progress.completedSteps.length < objective.steps.length;
+  });
+  const totalSteps = OPS_OBJECTIVES.reduce((sum, objective) => sum + objective.steps.length, 0);
+  const completedSteps = Object.values(progressMap).reduce((sum, progress) => sum + progress.completedSteps.length, 0);
   const attackerScore = Object.values(progressMap).reduce((sum, progress) => sum + progress.score, 0);
   const blockedActions = Object.values(progressMap).reduce((sum, progress) => sum + progress.blocked, 0);
   const remainingObjectives = OPS_OBJECTIVES.length - completed.length;
-  const defenderScore = Math.round(target.defensePower * 2 + blockedActions * 55 + remainingObjectives * 32);
+  const progressPercent = Math.round((completedSteps / totalSteps) * 100);
+  const defenderScore = Math.round(target.defensePower * 2 + blockedActions * 55 + remainingObjectives * 32 - progressPercent * 1.5);
 
   return {
     completedObjectives: completed.length,
     totalObjectives: OPS_OBJECTIVES.length,
+    completedSteps,
+    totalSteps,
+    partialObjectives: partial.length,
+    progressPercent,
     attackerScore,
-    defenderScore,
+    defenderScore: Math.max(0, defenderScore),
     blockedActions,
     winner: attackerScore >= defenderScore ? 'attacker' : 'defender',
     completedTitles: completed.map((objective) => objective.title),
+    partialTitles: partial.map((objective) => objective.title),
   };
 }
