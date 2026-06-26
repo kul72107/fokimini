@@ -30,20 +30,28 @@ import {
 } from '@/lib/battleEngine';
 import {
   OPS_OBJECTIVES,
+  OPS_DEFENSE_OBJECTIVES,
   createInitialOpsProgress,
+  createInitialOpsDefenseProgress,
   getAllCreatedEffects,
   getDefenseControlsForStep,
   getEffectLabel,
   getNextOpsStep,
+  getNextOpsDefenseStep,
+  getOpsDefenseProgressStats,
   getRecommendedTools,
   getToolOpsProfile,
+  resolveOpsDefenseAction,
   resolveOpsAction,
   summarizeOpsProgress,
   type OpsActionOutcome,
+  type OpsDefenseOutcome,
   type OpsEffect,
   type OpsFamily,
   type OpsMatchSummary,
   type OpsObjective,
+  type OpsDefenseObjective,
+  type OpsDefenseProgress,
   type OpsProgress,
   type OpsDefenseControl,
 } from '@/lib/opsEngine';
@@ -144,6 +152,10 @@ interface TimelineEvent extends OpsActionOutcome {
   objectiveTitle: string;
 }
 
+interface DefenseTimelineEvent extends OpsDefenseOutcome {
+  id: string;
+}
+
 export function OpsBattleMode({
   target,
   user,
@@ -157,8 +169,10 @@ export function OpsBattleMode({
 }) {
   const [secondsLeft, setSecondsLeft] = useState(MATCH_SECONDS);
   const [progressMap, setProgressMap] = useState<Record<string, OpsProgress>>(() => createInitialOpsProgress());
+  const [defenseProgressMap, setDefenseProgressMap] = useState<Record<string, OpsDefenseProgress>>(() => createInitialOpsDefenseProgress());
   const [selectedObjectiveId, setSelectedObjectiveId] = useState(OPS_OBJECTIVES[0].id);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [defenseTimeline, setDefenseTimeline] = useState<DefenseTimelineEvent[]>([]);
   const [usedToolIds, setUsedToolIds] = useState<number[]>([]);
   const [finished, setFinished] = useState(false);
 
@@ -179,11 +193,12 @@ export function OpsBattleMode({
 
   const attackerScore = Object.values(progressMap).reduce((sum, progress) => sum + progress.score, 0);
   const blockedActions = Object.values(progressMap).reduce((sum, progress) => sum + progress.blocked, 0);
+  const defenseStats = useMemo(() => getOpsDefenseProgressStats(defenseProgressMap), [defenseProgressMap]);
 
   const finishMatch = () => {
     if (finished) return;
     setFinished(true);
-    onComplete(summarizeOpsProgress(progressMap, target, usedToolIds));
+    onComplete(summarizeOpsProgress(progressMap, target, usedToolIds, defenseProgressMap));
   };
 
   useEffect(() => {
@@ -242,6 +257,39 @@ export function OpsBattleMode({
       },
       ...events,
     ].slice(0, 12));
+
+    const defenseOutcome = resolveOpsDefenseAction({
+      progressMap: defenseProgressMap,
+      outcome,
+      target,
+      controls: activeDefenseControls,
+    });
+
+    setDefenseProgressMap((current) => {
+      if (defenseOutcome.status !== 'advanced' || !defenseOutcome.objectiveId || !defenseOutcome.stepId) {
+        return current;
+      }
+      const existing = current[defenseOutcome.objectiveId];
+      if (!existing || existing.completedSteps.includes(defenseOutcome.stepId)) {
+        return current;
+      }
+      return {
+        ...current,
+        [defenseOutcome.objectiveId]: {
+          ...existing,
+          completedSteps: [...existing.completedSteps, defenseOutcome.stepId],
+          score: existing.score + defenseOutcome.points,
+        },
+      };
+    });
+
+    setDefenseTimeline((events) => [
+      {
+        ...defenseOutcome,
+        id: `${Date.now()}-defense-${Math.random()}`,
+      },
+      ...events,
+    ].slice(0, 6));
   };
 
   return (
@@ -292,8 +340,10 @@ export function OpsBattleMode({
               <p className="font-fredoka text-4xl font-black text-yellow-accent">{target.defensePower}</p>
             </div>
             <div className="text-right">
-              <p className="font-nunito text-xs font-black uppercase text-purple-lighter">Blocked</p>
-              <p className="font-fredoka text-3xl font-black text-green-success">{blockedActions}</p>
+              <p className="font-nunito text-xs font-black uppercase text-purple-lighter">Defense Steps</p>
+              <p className="font-fredoka text-3xl font-black text-green-success">
+                {defenseStats.completedSteps}/{defenseStats.totalSteps}
+              </p>
             </div>
           </div>
           <div className="mt-4 h-4 overflow-hidden rounded-full border-2 border-black bg-white">
@@ -341,6 +391,7 @@ export function OpsBattleMode({
         </div>
 
         <div className="space-y-5">
+          <DefenderObjectives progressMap={defenseProgressMap} events={defenseTimeline} />
           <DefenderPlaybook controls={activeDefenseControls} target={target} />
           <Timeline events={timeline} />
         </div>
@@ -548,6 +599,85 @@ function ObjectiveDetail({
       {state.isComplete && (
         <div className="mt-4 rounded-xl border-[3px] border-black bg-green-success p-3 text-center">
           <p className="font-fredoka text-lg font-black text-black">Objective complete: {objective.result}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function getDefenseObjectiveState(objective: OpsDefenseObjective, progress: OpsDefenseProgress) {
+  const completed = progress.completedSteps.length;
+  return {
+    completed,
+    total: objective.steps.length,
+    isComplete: completed >= objective.steps.length,
+    percent: Math.round((completed / objective.steps.length) * 100),
+  };
+}
+
+function DefenderObjectives({
+  progressMap,
+  events,
+}: {
+  progressMap: Record<string, OpsDefenseProgress>;
+  events: DefenseTimelineEvent[];
+}) {
+  const stats = getOpsDefenseProgressStats(progressMap);
+  const latestEvent = events[0];
+
+  return (
+    <div className="rounded-2xl border-4 border-black bg-white p-4 card-shadow">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={20} strokeWidth={3} className="text-green-success" />
+          <h2 className="font-fredoka text-xl font-black text-purple-darker">Defender Objectives</h2>
+        </div>
+        <span className="rounded-full border-2 border-black bg-green-success px-2.5 py-1 font-nunito text-[10px] font-black text-black">
+          {stats.completedSteps}/{stats.totalSteps}
+        </span>
+      </div>
+
+      <div className="mb-3 h-3 overflow-hidden rounded-full border-2 border-black bg-purple-pale">
+        <div className="h-full bg-green-success" style={{ width: `${stats.progressPercent}%` }} />
+      </div>
+
+      <div className="space-y-2">
+        {OPS_DEFENSE_OBJECTIVES.map((objective) => {
+          const progress = progressMap[objective.id];
+          const state = getDefenseObjectiveState(objective, progress);
+          const nextStep = getNextOpsDefenseStep(objective, progress);
+          return (
+            <div key={objective.id} className="rounded-xl border-[3px] border-black bg-purple-pale p-3">
+              <div className="flex items-start gap-3">
+                <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border-2 border-black ${state.isComplete ? 'bg-green-success' : 'bg-white'}`}>
+                  {state.isComplete ? <CheckCircle size={17} strokeWidth={3} /> : <Shield size={17} strokeWidth={3} />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="truncate font-fredoka text-sm font-black text-purple-darker">{objective.title}</h3>
+                    <span className="font-nunito text-[10px] font-black text-purple-primary">
+                      {state.completed}/{state.total}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 font-nunito text-[11px] font-bold text-purple-dark">
+                    {state.isComplete ? objective.result : nextStep ? nextStep.title : objective.description}
+                  </p>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full border-2 border-black bg-white">
+                    <div className="h-full bg-green-success" style={{ width: `${state.percent}%` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {latestEvent && (
+        <div className="mt-3 rounded-xl border-[3px] border-black bg-yellow-accent p-3">
+          <p className="font-nunito text-[10px] font-black uppercase text-purple-darker">
+            Latest Defense Move
+          </p>
+          <p className="font-nunito text-xs font-bold text-purple-darker">{latestEvent.message}</p>
         </div>
       )}
     </div>
@@ -794,7 +924,7 @@ export function OpsResultPanel({
       initial={{ scale: 0.88, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0.95, opacity: 0 }}
-      className="mx-auto max-w-3xl px-4 pt-8 pb-16"
+      className="mx-auto max-w-4xl px-4 pt-8 pb-16"
     >
       <div className={`rounded-2xl border-4 border-black p-7 text-center card-shadow-lg ${attackerWon ? 'bg-yellow-accent' : 'bg-blue-100'}`}>
         {attackerWon ? (
@@ -821,6 +951,25 @@ export function OpsResultPanel({
         <ResultStat label="Attack Score" value={summary.attackerScore.toString()} icon={<Flame size={20} strokeWidth={3} />} />
         <ResultStat label="Defense Score" value={summary.defenderScore.toString()} icon={<Shield size={20} strokeWidth={3} />} />
         <ResultStat label="Blocked" value={summary.blockedActions.toString()} icon={<XCircle size={20} strokeWidth={3} />} />
+      </div>
+
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <ResultProgressCard
+          title="Attacker Progress"
+          color="#FACC15"
+          score={summary.attackerScore}
+          objectives={`${summary.completedObjectives}/${summary.totalObjectives}`}
+          steps={`${summary.completedSteps}/${summary.totalSteps}`}
+          percent={summary.progressPercent}
+        />
+        <ResultProgressCard
+          title="Defender Progress"
+          color="#4ADE80"
+          score={summary.defenderScore}
+          objectives={`${summary.defenderCompletedObjectives}/${summary.defenderTotalObjectives}`}
+          steps={`${summary.defenderCompletedSteps}/${summary.defenderTotalSteps}`}
+          percent={summary.defenderProgressPercent}
+        />
       </div>
 
       <div className="mt-5 rounded-2xl border-4 border-black bg-white p-5 card-shadow">
@@ -855,6 +1004,19 @@ export function OpsResultPanel({
         </div>
       )}
 
+      {summary.defenderCompletedTitles.length > 0 && (
+        <div className="mt-5 rounded-2xl border-4 border-black bg-white p-5 card-shadow">
+          <h2 className="font-fredoka text-xl font-black text-purple-darker">Defender Goals</h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {summary.defenderCompletedTitles.map((title) => (
+              <span key={title} className="rounded-full border-2 border-black bg-green-success px-3 py-1 font-nunito text-xs font-black text-black">
+                {title}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
         <button
           onClick={onRunAgain}
@@ -872,6 +1034,50 @@ export function OpsResultPanel({
         </button>
       </div>
     </motion.div>
+  );
+}
+
+function ResultProgressCard({
+  title,
+  color,
+  score,
+  objectives,
+  steps,
+  percent,
+}: {
+  title: string;
+  color: string;
+  score: number;
+  objectives: string;
+  steps: string;
+  percent: number;
+}) {
+  return (
+    <div className="rounded-2xl border-4 border-black bg-white p-5 card-shadow">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-fredoka text-xl font-black text-purple-darker">{title}</h2>
+        <span className="rounded-full border-2 border-black px-3 py-1 font-nunito text-[10px] font-black text-black" style={{ backgroundColor: color }}>
+          {percent}%
+        </span>
+      </div>
+      <div className="mt-3 h-4 overflow-hidden rounded-full border-2 border-black bg-purple-pale">
+        <div className="h-full" style={{ width: `${percent}%`, backgroundColor: color }} />
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <MiniResult label="Score" value={score.toString()} />
+        <MiniResult label="Objectives" value={objectives} />
+        <MiniResult label="Steps" value={steps} />
+      </div>
+    </div>
+  );
+}
+
+function MiniResult({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border-[3px] border-black bg-purple-pale p-2 text-center">
+      <p className="font-nunito text-[9px] font-black uppercase text-purple-dark">{label}</p>
+      <p className="font-fredoka text-lg font-black text-purple-darker">{value}</p>
+    </div>
   );
 }
 

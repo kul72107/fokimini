@@ -98,6 +98,12 @@ export interface OpsBattleRecordSummary {
   attackerScore: number;
   defenderScore: number;
   blockedActions: number;
+  defenderCompletedObjectives: number;
+  defenderTotalObjectives: number;
+  defenderCompletedSteps: number;
+  defenderTotalSteps: number;
+  defenderProgressPercent: number;
+  defenderCompletedTitles: string[];
   toolsUsed: number[];
   winner: 'attacker' | 'defender';
   completedTitles: string[];
@@ -820,6 +826,9 @@ export function recordOpsBattleResult(
   const partialText = summary.partialTitles.length > 0
     ? summary.partialTitles.slice(0, 3).join(', ')
     : 'no partial chains';
+  const defenderText = summary.defenderCompletedTitles.length > 0
+    ? summary.defenderCompletedTitles.slice(0, 3).join(', ')
+    : 'no completed defense goals';
 
   const rounds: BattleRound[] = [
     {
@@ -851,6 +860,16 @@ export function recordOpsBattleResult(
       message: `Partial chains: ${partialText}. Defender blocks: ${summary.blockedActions}.`,
       attackerRoll: summary.partialObjectives,
       defenderRoll: summary.blockedActions,
+    },
+    {
+      round: 4,
+      attackerTool: 'Timed Ops Score',
+      defenderLayer: 'Defense Objectives',
+      damage: Math.round(summary.progressPercent / 2),
+      blocked: Math.round(summary.defenderProgressPercent / 2),
+      message: `Defense goals: ${defenderText}. Defender reached ${summary.defenderCompletedSteps}/${summary.defenderTotalSteps} response steps.`,
+      attackerRoll: summary.progressPercent,
+      defenderRoll: summary.defenderProgressPercent,
     },
   ];
 

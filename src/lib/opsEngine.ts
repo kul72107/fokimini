@@ -69,6 +69,30 @@ export interface OpsProgress {
   score: number;
 }
 
+export interface OpsDefenseStep {
+  id: string;
+  title: string;
+  role: string;
+  uses: OpsEffect[];
+  result: string;
+}
+
+export interface OpsDefenseObjective {
+  id: string;
+  title: string;
+  layer: string;
+  result: string;
+  reward: number;
+  description: string;
+  steps: OpsDefenseStep[];
+}
+
+export interface OpsDefenseProgress {
+  objectiveId: string;
+  completedSteps: string[];
+  score: number;
+}
+
 export interface OpsActionOutcome {
   status: 'complete' | 'blocked' | 'off_path' | 'already_done';
   objectiveId: string;
@@ -94,6 +118,12 @@ export interface OpsMatchSummary {
   attackerScore: number;
   defenderScore: number;
   blockedActions: number;
+  defenderCompletedObjectives: number;
+  defenderTotalObjectives: number;
+  defenderCompletedSteps: number;
+  defenderTotalSteps: number;
+  defenderProgressPercent: number;
+  defenderCompletedTitles: string[];
   xpGained: number;
   toolsUsed: number[];
   winner: 'attacker' | 'defender';
@@ -116,6 +146,16 @@ export interface OpsDefenseControl {
   strength: number;
   description: string;
   miniGame: string;
+}
+
+export interface OpsDefenseOutcome {
+  status: 'advanced' | 'held';
+  objectiveId?: string;
+  stepId?: string;
+  points: number;
+  message: string;
+  controlName?: string;
+  effects: OpsEffect[];
 }
 
 export const OPS_DEFENSE_CONTROLS: OpsDefenseControl[] = [
@@ -238,6 +278,133 @@ export const OPS_DEFENSE_CONTROLS: OpsDefenseControl[] = [
     strength: 6,
     description: 'Creates believable decoys that waste attacker steps and reveal their route.',
     miniGame: 'Pick a decoy that matches the attacker objective closely enough.',
+  },
+];
+
+export const OPS_DEFENSE_OBJECTIVES: OpsDefenseObjective[] = [
+  {
+    id: 'evidence-triage',
+    title: 'Evidence Triage',
+    layer: 'Monitoring',
+    result: 'Attack route classified',
+    reward: 180,
+    description: 'Read the attacker trail and turn scattered clues into one defense picture.',
+    steps: [
+      {
+        id: 'collect-signals',
+        title: 'Collect live signals',
+        role: 'Observe',
+        uses: ['log', 'traffic', 'recon', 'osint'],
+        result: 'Signals collected',
+      },
+      {
+        id: 'correlate-route',
+        title: 'Correlate the route',
+        role: 'Analyze',
+        uses: ['log', 'traffic', 'network', 'dns'],
+        result: 'Route correlated',
+      },
+      {
+        id: 'classify-chain',
+        title: 'Classify attack chain',
+        role: 'Decision',
+        uses: ['edr', 'log', 'defense'],
+        result: 'Attack chain classified',
+      },
+    ],
+  },
+  {
+    id: 'containment-stack',
+    title: 'Containment Stack',
+    layer: 'Controls',
+    result: 'Active route contained',
+    reward: 220,
+    description: 'Use specific controls to stop the current route without shutting down the whole site.',
+    steps: [
+      {
+        id: 'shape-web-policy',
+        title: 'Shape web policy',
+        role: 'WAF',
+        uses: ['waf', 'patch', 'web', 'sql', 'xss'],
+        result: 'Web policy tuned',
+      },
+      {
+        id: 'cut-network-route',
+        title: 'Cut unsafe route',
+        role: 'Network',
+        uses: ['firewall', 'network', 'traffic', 'proxy'],
+        result: 'Unsafe route contained',
+      },
+      {
+        id: 'watch-endpoint',
+        title: 'Watch endpoint behavior',
+        role: 'Endpoint',
+        uses: ['edr', 'malware', 'payload', 'endpoint'],
+        result: 'Endpoint behavior contained',
+      },
+    ],
+  },
+  {
+    id: 'identity-trust-recovery',
+    title: 'Identity Trust Recovery',
+    layer: 'Trust',
+    result: 'Tokens and trust restored',
+    reward: 210,
+    description: 'Undo session, certificate, redirect, and credential pressure before it becomes a pivot.',
+    steps: [
+      {
+        id: 'verify-certificate',
+        title: 'Verify certificate trust',
+        role: 'Trust',
+        uses: ['cert', 'crypto', 'web', 'dns'],
+        result: 'Trust mismatch checked',
+      },
+      {
+        id: 'revoke-sensitive-tokens',
+        title: 'Revoke sensitive tokens',
+        role: 'Identity',
+        uses: ['session', 'credential', 'log'],
+        result: 'Sensitive tokens revoked',
+      },
+      {
+        id: 'restore-browser-policy',
+        title: 'Restore browser policy',
+        role: 'Browser',
+        uses: ['web', 'payload', 'social', 'proxy'],
+        result: 'Browser trust restored',
+      },
+    ],
+  },
+  {
+    id: 'recovery-and-deception',
+    title: 'Recovery And Deception',
+    layer: 'Recovery',
+    result: 'Clean state restored',
+    reward: 190,
+    description: 'Recover safe state and use decoys to slow future pivots.',
+    steps: [
+      {
+        id: 'verify-backup',
+        title: 'Verify clean backup',
+        role: 'Recovery',
+        uses: ['backup', 'exfil', 'defense'],
+        result: 'Clean backup verified',
+      },
+      {
+        id: 'plant-decoy',
+        title: 'Plant believable decoy',
+        role: 'Deception',
+        uses: ['stealth', 'recon', 'network', 'malware'],
+        result: 'Decoy route planted',
+      },
+      {
+        id: 'prove-service-health',
+        title: 'Prove service health',
+        role: 'Recovery',
+        uses: ['backup', 'log', 'traffic', 'defense'],
+        result: 'Service health proved',
+      },
+    ],
   },
 ];
 
@@ -792,6 +959,15 @@ export function createInitialOpsProgress(): Record<string, OpsProgress> {
   );
 }
 
+export function createInitialOpsDefenseProgress(): Record<string, OpsDefenseProgress> {
+  return Object.fromEntries(
+    OPS_DEFENSE_OBJECTIVES.map((objective) => [
+      objective.id,
+      { objectiveId: objective.id, completedSteps: [], score: 0 },
+    ]),
+  );
+}
+
 function addEffects(effects: Set<OpsEffect>, values: OpsEffect[]) {
   values.forEach((value) => effects.add(value));
 }
@@ -838,6 +1014,13 @@ export function getToolOpsProfile(tool: AttackTool): ToolOpsProfile {
 }
 
 export function getNextOpsStep(objective: OpsObjective, progress: OpsProgress): OpsStep | null {
+  return objective.steps.find((step) => !progress.completedSteps.includes(step.id)) ?? null;
+}
+
+export function getNextOpsDefenseStep(
+  objective: OpsDefenseObjective,
+  progress: OpsDefenseProgress,
+): OpsDefenseStep | null {
   return objective.steps.find((step) => !progress.completedSteps.includes(step.id)) ?? null;
 }
 
@@ -905,6 +1088,98 @@ function pickDefenseControl(counter: OpsEffect, target: BattleTarget): OpsDefens
   if (candidates.length === 0) return OPS_DEFENSE_CONTROLS[0];
   const topWindow = candidates.slice(0, Math.min(candidates.length, target.defensePower > 70 ? 4 : 2));
   return topWindow[Math.floor(Math.random() * topWindow.length)];
+}
+
+export function getOpsDefenseProgressStats(progressMap: Record<string, OpsDefenseProgress>) {
+  const completedObjectives = OPS_DEFENSE_OBJECTIVES.filter((objective) => {
+    const progress = progressMap[objective.id];
+    return progress && progress.completedSteps.length >= objective.steps.length;
+  });
+  const totalSteps = OPS_DEFENSE_OBJECTIVES.reduce((sum, objective) => sum + objective.steps.length, 0);
+  const completedSteps = Object.values(progressMap).reduce((sum, progress) => sum + progress.completedSteps.length, 0);
+  const score = Object.values(progressMap).reduce((sum, progress) => sum + progress.score, 0);
+
+  return {
+    completedObjectives: completedObjectives.length,
+    totalObjectives: OPS_DEFENSE_OBJECTIVES.length,
+    completedSteps,
+    totalSteps,
+    progressPercent: Math.round((completedSteps / totalSteps) * 100),
+    score,
+    completedTitles: completedObjectives.map((objective) => objective.title),
+  };
+}
+
+export function resolveOpsDefenseAction({
+  progressMap,
+  outcome,
+  target,
+  controls,
+}: {
+  progressMap: Record<string, OpsDefenseProgress>;
+  outcome: OpsActionOutcome;
+  target: BattleTarget;
+  controls: OpsDefenseControl[];
+}): OpsDefenseOutcome {
+  const outcomeEffects = [
+    ...new Set([
+      ...outcome.created,
+      ...(outcome.bridgeEffects ?? []),
+      ...(outcome.counterEffect ? [outcome.counterEffect] : []),
+      ...controls.flatMap((control) => control.protects),
+    ]),
+  ];
+
+  const candidates = OPS_DEFENSE_OBJECTIVES
+    .map((objective) => {
+      const progress = progressMap[objective.id];
+      const nextStep = getNextOpsDefenseStep(objective, progress);
+      if (!nextStep) return null;
+      const matchingEffects = nextStep.uses.filter((effect) => outcomeEffects.includes(effect));
+      return { objective, progress, nextStep, matchingEffects };
+    })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+    .sort((a, b) => b.matchingEffects.length - a.matchingEffects.length);
+
+  if (candidates.length === 0) {
+    return {
+      status: 'held',
+      points: 0,
+      message: `${target.displayName}'s defense stack has already completed every response chain.`,
+      effects: outcomeEffects,
+    };
+  }
+
+  const best = candidates[0];
+  const control = controls.find((item) => item.protects.some((effect) => best.nextStep.uses.includes(effect)));
+  const matchBonus = best.matchingEffects.length * 12;
+  const blockBonus = outcome.status === 'blocked' ? 32 : outcome.status === 'off_path' ? 20 : 0;
+  const pressure = Math.min(95, target.defensePower * 0.55 + matchBonus + blockBonus);
+  const advances = outcome.status === 'blocked' || Math.random() * 100 < pressure;
+
+  if (!advances) {
+    return {
+      status: 'held',
+      objectiveId: best.objective.id,
+      stepId: best.nextStep.id,
+      points: 6,
+      controlName: control?.name,
+      message: `${target.displayName}'s defenders watched "${best.nextStep.title}" but did not complete that response yet.`,
+      effects: best.matchingEffects,
+    };
+  }
+
+  const points = Math.round(best.objective.reward / best.objective.steps.length + target.defensePower / 12 + matchBonus);
+
+  return {
+    status: 'advanced',
+    objectiveId: best.objective.id,
+    stepId: best.nextStep.id,
+    points,
+    controlName: control?.name,
+    message: `${target.displayName}'s ${control?.name ?? best.objective.layer} advanced "${best.nextStep.title}". ${best.nextStep.result}.`,
+    effects: best.matchingEffects,
+  };
 }
 
 export function resolveOpsAction({
@@ -1009,6 +1284,7 @@ export function summarizeOpsProgress(
   progressMap: Record<string, OpsProgress>,
   target: BattleTarget,
   toolsUsed: number[] = [],
+  defenseProgressMap: Record<string, OpsDefenseProgress> = createInitialOpsDefenseProgress(),
 ): OpsMatchSummary {
   const completed = OPS_OBJECTIVES.filter((objective) => {
     const progress = progressMap[objective.id];
@@ -1024,7 +1300,15 @@ export function summarizeOpsProgress(
   const blockedActions = Object.values(progressMap).reduce((sum, progress) => sum + progress.blocked, 0);
   const remainingObjectives = OPS_OBJECTIVES.length - completed.length;
   const progressPercent = Math.round((completedSteps / totalSteps) * 100);
-  const defenderScore = Math.round(target.defensePower * 2 + blockedActions * 55 + remainingObjectives * 32 - progressPercent * 1.5);
+  const defenseStats = getOpsDefenseProgressStats(defenseProgressMap);
+  const defenderScore = Math.round(
+    target.defensePower * 1.4
+    + blockedActions * 45
+    + remainingObjectives * 22
+    + defenseStats.score
+    + defenseStats.completedSteps * 18
+    - progressPercent * 1.2,
+  );
 
   return {
     completedObjectives: completed.length,
@@ -1036,6 +1320,12 @@ export function summarizeOpsProgress(
     attackerScore,
     defenderScore: Math.max(0, defenderScore),
     blockedActions,
+    defenderCompletedObjectives: defenseStats.completedObjectives,
+    defenderTotalObjectives: defenseStats.totalObjectives,
+    defenderCompletedSteps: defenseStats.completedSteps,
+    defenderTotalSteps: defenseStats.totalSteps,
+    defenderProgressPercent: defenseStats.progressPercent,
+    defenderCompletedTitles: defenseStats.completedTitles,
     xpGained: 0,
     toolsUsed: [...new Set(toolsUsed)],
     winner: attackerScore >= defenderScore ? 'attacker' : 'defender',
