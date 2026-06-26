@@ -1,4 +1,10 @@
-import { ALL_TOOLS, type AttackTool, type BattleTarget } from './battleEngine';
+import {
+  ALL_TOOLS,
+  getUserDefenses,
+  type AttackTool,
+  type BattleTarget,
+  type DefenseState,
+} from './battleEngine';
 
 export type OpsEffect =
   | 'recon'
@@ -148,6 +154,15 @@ export interface OpsDefenseControl {
   miniGame: string;
 }
 
+export interface OpsDefenseLayerProfile {
+  key: keyof Omit<DefenseState, 'totalDefensePower'>;
+  label: string;
+  effects: OpsEffect[];
+  color: string;
+  level: number;
+  power: number;
+}
+
 export interface OpsDefenseOutcome {
   status: 'advanced' | 'held';
   objectiveId?: string;
@@ -278,6 +293,51 @@ export const OPS_DEFENSE_CONTROLS: OpsDefenseControl[] = [
     strength: 6,
     description: 'Creates believable decoys that waste attacker steps and reveal their route.',
     miniGame: 'Pick a decoy that matches the attacker objective closely enough.',
+  },
+];
+
+const OPS_DEFENSE_LAYER_CONFIG: Array<Omit<OpsDefenseLayerProfile, 'level' | 'power'>> = [
+  {
+    key: 'firewallLevel',
+    label: 'Firewall',
+    effects: ['firewall', 'network', 'traffic', 'proxy'],
+    color: '#14B8A6',
+  },
+  {
+    key: 'idsLevel',
+    label: 'IDS',
+    effects: ['log', 'traffic', 'recon', 'osint'],
+    color: '#A3E635',
+  },
+  {
+    key: 'wafLevel',
+    label: 'WAF',
+    effects: ['waf', 'web', 'sql', 'xss', 'patch'],
+    color: '#84CC16',
+  },
+  {
+    key: 'honeypotLevel',
+    label: 'Honeypot',
+    effects: ['stealth', 'recon', 'network', 'malware'],
+    color: '#A78BFA',
+  },
+  {
+    key: 'encryptionLevel',
+    label: 'Crypto',
+    effects: ['crypto', 'cert', 'session', 'credential'],
+    color: '#818CF8',
+  },
+  {
+    key: 'antiVirusLevel',
+    label: 'AV/EDR',
+    effects: ['edr', 'malware', 'payload', 'endpoint', 'persistence'],
+    color: '#10B981',
+  },
+  {
+    key: 'backupLevel',
+    label: 'Backup',
+    effects: ['backup', 'exfil', 'defense'],
+    color: '#2DD4BF',
   },
 ];
 
@@ -934,6 +994,56 @@ export function getEffectLabel(effect: OpsEffect): string {
   return EFFECT_LABELS[effect];
 }
 
+function clampLevel(value: number) {
+  return Math.max(0, Math.min(20, Math.round(value)));
+}
+
+function createBotDefenseState(target: BattleTarget): DefenseState {
+  const level = Math.max(1, target.level || Math.max(1, Math.round(target.defensePower / 12)));
+  const state: DefenseState = {
+    firewallLevel: clampLevel(level * 0.75),
+    idsLevel: clampLevel(level * 0.65),
+    wafLevel: clampLevel(level * 0.55),
+    honeypotLevel: clampLevel(level * 0.42),
+    encryptionLevel: clampLevel(level * 0.62),
+    antiVirusLevel: clampLevel(level * 0.58),
+    backupLevel: clampLevel(level * 0.36),
+    totalDefensePower: target.defensePower,
+  };
+  return state;
+}
+
+export function getTargetDefenseState(target: BattleTarget): DefenseState {
+  if (target.isBot || target.userId < 0) {
+    return createBotDefenseState(target);
+  }
+
+  try {
+    return getUserDefenses(target.userId);
+  } catch {
+    return createBotDefenseState(target);
+  }
+}
+
+export function getTargetDefenseLayers(target: BattleTarget): OpsDefenseLayerProfile[] {
+  const state = getTargetDefenseState(target);
+  return OPS_DEFENSE_LAYER_CONFIG.map((layer) => {
+    const level = Number(state[layer.key] || 0);
+    return {
+      ...layer,
+      level,
+      power: Math.round(level * Math.max(1, layer.effects.length / 2)),
+    };
+  }).sort((a, b) => b.power - a.power || b.level - a.level);
+}
+
+function getSpecificDefenseBonus(effects: OpsEffect[], target?: BattleTarget) {
+  if (!target) return 0;
+  return getTargetDefenseLayers(target)
+    .filter((layer) => layer.effects.some((effect) => effects.includes(effect)))
+    .reduce((sum, layer) => sum + layer.level, 0);
+}
+
 const BRIDGE_OPERATOR_EFFECTS: OpsEffect[] = [
   'recon',
   'osint',
@@ -1074,7 +1184,10 @@ export function getDefenseControlsForEffects(effects: OpsEffect[], target?: Batt
   const targetBoost = target ? Math.min(3, Math.floor(target.defensePower / 45)) : 0;
   return OPS_DEFENSE_CONTROLS
     .filter((control) => control.protects.some((effect) => effects.includes(effect)))
-    .map((control) => ({ ...control, strength: control.strength + targetBoost }))
+    .map((control) => {
+      const specificBonus = Math.min(6, Math.floor(getSpecificDefenseBonus(control.protects, target) / 6));
+      return { ...control, strength: control.strength + targetBoost + specificBonus };
+    })
     .sort((a, b) => b.strength - a.strength || a.name.localeCompare(b.name));
 }
 
@@ -1154,7 +1267,9 @@ export function resolveOpsDefenseAction({
   const control = controls.find((item) => item.protects.some((effect) => best.nextStep.uses.includes(effect)));
   const matchBonus = best.matchingEffects.length * 12;
   const blockBonus = outcome.status === 'blocked' ? 32 : outcome.status === 'off_path' ? 20 : 0;
-  const pressure = Math.min(95, target.defensePower * 0.55 + matchBonus + blockBonus);
+  const controlBonus = Math.max(0, ...controls.map((control) => control.strength)) * 3;
+  const layerBonus = Math.min(28, getSpecificDefenseBonus(best.nextStep.uses, target));
+  const pressure = Math.min(95, target.defensePower * 0.42 + matchBonus + blockBonus + controlBonus + layerBonus);
   const advances = outcome.status === 'blocked' || Math.random() * 100 < pressure;
 
   if (!advances) {
@@ -1169,7 +1284,7 @@ export function resolveOpsDefenseAction({
     };
   }
 
-  const points = Math.round(best.objective.reward / best.objective.steps.length + target.defensePower / 12 + matchBonus);
+  const points = Math.round(best.objective.reward / best.objective.steps.length + target.defensePower / 16 + matchBonus + layerBonus);
 
   return {
     status: 'advanced',
@@ -1231,7 +1346,8 @@ export function resolveOpsAction({
   const combinedEffects = [...new Set([...profile.effects, ...bridgeMatches])];
   const bridgeOnly = directMatches.length === 0 && bridgeAllowed;
   const counterHit = nextStep.defenderCounters.some((counter) => combinedEffects.includes(counter));
-  const defensePressure = Math.min(48, Math.max(8, target.defensePower / 5 + objective.risk / 5));
+  const specificDefensePressure = Math.min(18, getSpecificDefenseBonus(nextStep.defenderCounters, target) / 2);
+  const defensePressure = Math.min(54, Math.max(8, target.defensePower / 6 + objective.risk / 5 + specificDefensePressure));
   const ownedBonus = isOwned ? 10 : 0;
   const stabilityBonus = profile.stability * 4;
   const bridgeRisk = bridgeOnly ? 7 : bridgeMatches.length > 0 ? 3 : 0;

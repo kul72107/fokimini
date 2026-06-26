@@ -40,6 +40,7 @@ import {
   getNextOpsDefenseStep,
   getOpsDefenseProgressStats,
   getRecommendedTools,
+  getTargetDefenseLayers,
   getToolOpsProfile,
   resolveOpsDefenseAction,
   resolveOpsAction,
@@ -183,6 +184,7 @@ export function OpsBattleMode({
   const pinnedEffects = useMemo(() => getAllCreatedEffects(progressMap), [progressMap]);
   const suggestedTools = useMemo(() => getSuggestedTools(nextStep, ownedIds, pinnedEffects), [nextStep, ownedIds, pinnedEffects]);
   const activeDefenseControls = useMemo(() => getDefenseControlsForStep(nextStep, target), [nextStep, target]);
+  const targetDefenseLayers = useMemo(() => getTargetDefenseLayers(target), [target]);
 
   const completedCount = OPS_OBJECTIVES.filter((objective) => {
     const progress = progressMap[objective.id];
@@ -352,6 +354,17 @@ export function OpsBattleMode({
               animate={{ width: `${Math.min(100, target.defensePower)}%` }}
               className="h-full bg-green-success"
             />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {targetDefenseLayers.slice(0, 4).map((layer) => (
+              <span
+                key={layer.key}
+                className="rounded-full border border-black px-2 py-0.5 font-nunito text-[9px] font-black uppercase text-black"
+                style={{ backgroundColor: layer.color }}
+              >
+                {layer.label} Lv.{layer.level}
+              </span>
+            ))}
           </div>
         </div>
 
@@ -723,9 +736,14 @@ function DefenseControlCard({ control }: { control: OpsDefenseControl }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-fredoka text-sm font-black text-purple-darker">{control.name}</h3>
-            <span className="rounded-full border border-black bg-white px-2 py-0.5 font-nunito text-[8px] font-black uppercase text-purple-dark">
-              {control.layer}
-            </span>
+            <div className="flex flex-shrink-0 gap-1">
+              <span className="rounded-full border border-black bg-white px-2 py-0.5 font-nunito text-[8px] font-black uppercase text-purple-dark">
+                {control.layer}
+              </span>
+              <span className="rounded-full border border-black bg-green-success px-2 py-0.5 font-nunito text-[8px] font-black uppercase text-black">
+                STR {control.strength}
+              </span>
+            </div>
           </div>
           <p className="mt-1 font-nunito text-[11px] font-bold text-purple-dark">{control.description}</p>
           <p className="mt-1 font-nunito text-[10px] font-black text-purple-primary">{control.miniGame}</p>
