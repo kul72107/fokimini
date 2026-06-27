@@ -183,7 +183,7 @@ function rotateOptions(options: string[], seed: string) {
   return [...options.slice(offset), ...options.slice(0, offset)];
 }
 
-function SimuleGame({
+export function SimuleGame({
   gameId,
   onScoreChange,
 }: {
