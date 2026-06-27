@@ -58,6 +58,23 @@ describe('ordered ops simuletool chains', () => {
     expect(recommended).not.toContain('Keylogger Sim');
   });
 
+  it('starts every objective on the first explicit chain segment', () => {
+    const starts = OPS_OBJECTIVES.map((objective) => {
+      const progress = createInitialOpsProgress()[objective.id];
+      const nextStep = getNextOpsStep(objective, progress);
+      const chain = getStepToolChainItems(nextStep);
+      const recommended = getRecommendedTools(nextStep, progress);
+
+      return {
+        objective: objective.id,
+        expected: chain[0]?.tool.name,
+        recommended: recommended[0]?.name,
+      };
+    });
+
+    expect(starts.filter((start) => start.expected !== start.recommended)).toEqual([]);
+  });
+
   it('rejects a later chain tool until the previous segment is complete', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99);
 
@@ -125,5 +142,15 @@ describe('ordered ops simuletool chains', () => {
     expect(second.stepComplete).toBe(true);
     expect(second.completedToolIds).toEqual(['dns-lookup-gui', 'advanced-port-scan']);
     expect(second.created).toEqual(['recon', 'web']);
+
+    const exhaustedProgress = {
+      ...progress,
+      completedToolRuns: {
+        ...progress.completedToolRuns,
+        [second.stepId!]: second.completedToolIds!,
+      },
+    };
+
+    expect(getRecommendedTools(getNextOpsStep(objective!, exhaustedProgress), exhaustedProgress)).toEqual([]);
   });
 });

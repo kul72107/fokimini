@@ -408,6 +408,7 @@ export function OpsBattleMode({
           <ObjectiveDetail objective={selectedObjective} progress={selectedProgress} />
           <ToolRunner
             nextStep={nextStep}
+            progress={selectedProgress}
             suggestedTools={suggestedTools}
             ownedIds={ownedIds}
             availableEffects={pinnedEffects}
@@ -827,12 +828,14 @@ function MiniInfo({
 
 function ToolRunner({
   nextStep,
+  progress,
   suggestedTools,
   ownedIds,
   availableEffects,
   onUseTool,
 }: {
   nextStep: ReturnType<typeof getNextOpsStep>;
+  progress: OpsProgress | undefined;
   suggestedTools: AttackTool[];
   ownedIds: Set<number>;
   availableEffects: OpsEffect[];
@@ -840,6 +843,9 @@ function ToolRunner({
 }) {
   const neededEffects = nextStep?.accepts ?? [];
   const bridgedEffects = availableEffects.filter((effect) => neededEffects.includes(effect));
+  const chainItems = getStepToolChainItems(nextStep);
+  const completedChainIds = nextStep ? getCompletedStepToolIds(progress, nextStep.id) : [];
+  const activeChainIndex = chainItems.findIndex((item) => !completedChainIds.includes(item.opsToolId));
 
   return (
     <div className="rounded-2xl border-4 border-black bg-white p-5 card-shadow">
@@ -862,6 +868,56 @@ function ToolRunner({
         </div>
       ) : (
         <div>
+          <div className="mb-3 rounded-2xl border-[3px] border-black bg-purple-pale p-3">
+            <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-nunito text-[10px] font-black uppercase text-purple-primary">
+                  Active operation chain
+                </p>
+                <p className="font-fredoka text-base font-black text-purple-darker">
+                  {nextStep.title}
+                </p>
+              </div>
+              <span className="w-fit rounded-full border-2 border-black bg-white px-3 py-1 font-nunito text-[10px] font-black uppercase text-purple-darker">
+                {Math.min(completedChainIds.length + 1, Math.max(1, chainItems.length))}/{Math.max(1, chainItems.length)} required
+              </span>
+            </div>
+
+            <div className="grid gap-2">
+              {chainItems.map((item, index) => {
+                const done = completedChainIds.includes(item.opsToolId);
+                const active = index === activeChainIndex;
+                const locked = !done && !active;
+                return (
+                  <div
+                    key={item.opsToolId}
+                    className={`flex items-center gap-3 rounded-xl border-2 border-black p-2 ${
+                      done
+                        ? 'bg-green-success/25'
+                        : active
+                          ? 'bg-yellow-accent'
+                          : 'bg-white'
+                    }`}
+                  >
+                    <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border-2 border-black ${
+                      done ? 'bg-green-success' : active ? 'bg-white' : 'bg-gray-200'
+                    }`}>
+                      {done ? <CheckCircle size={16} strokeWidth={3} /> : locked ? <Lock size={16} strokeWidth={3} /> : <Play size={16} strokeWidth={3} />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-fredoka text-sm font-black text-purple-darker">
+                        {index + 1}. {item.tool.name}
+                      </p>
+                      <p className="font-nunito text-[10px] font-black uppercase text-purple-dark">
+                        {done ? 'segment complete' : active ? 'next required simuletool' : 'locked until previous segment'}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <p className="mb-3 font-nunito text-xs font-bold text-purple-dark">
             This queue shows only the next required simuletool in the active operation chain. Wrong-order tools cannot advance progress.
           </p>
