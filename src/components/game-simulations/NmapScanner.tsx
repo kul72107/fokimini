@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Radar, Zap, Shield, Globe, Server, Lock, Unlock,
@@ -124,6 +124,7 @@ const SCAN_TYPES = [
 ];
 
 export default function NmapScanner({ onScoreChange }: Props) {
+  const onScoreChangeRef = useRef(onScoreChange);
   const [selectedTarget, setSelectedTarget] = useState(0);
   const [scanType, setScanType] = useState('quick');
   const [isScanning, setIsScanning] = useState(false);
@@ -139,6 +140,10 @@ export default function NmapScanner({ onScoreChange }: Props) {
 
   const target = TARGETS[selectedTarget];
   const currentScan = SCAN_TYPES.find(s => s.id === scanType)!;
+
+  useEffect(() => {
+    onScoreChangeRef.current = onScoreChange;
+  }, [onScoreChange]);
 
   const generatePortGrid = useCallback((): PortInfo[] => {
     const ports: PortInfo[] = [];
@@ -198,9 +203,11 @@ export default function NmapScanner({ onScoreChange }: Props) {
         setScanComplete(true);
         setScanCount(c => c + 1);
         const openCount = ports.filter(p => target.ports.some(tp => tp.port === p.port)).length;
-        const newScore = totalScore + openCount * 10 + 5;
-        setTotalScore(newScore);
-        onScoreChange(Math.min(100, newScore));
+        setTotalScore(prev => {
+          const newScore = prev + openCount * 10 + 5;
+          onScoreChangeRef.current(Math.min(100, newScore));
+          return newScore;
+        });
         return;
       }
 
@@ -219,7 +226,7 @@ export default function NmapScanner({ onScoreChange }: Props) {
     }, safeIntervalMs);
 
     return () => clearInterval(interval);
-  }, [isScanning, target, currentScan, generatePortGrid, totalScore, onScoreChange]);
+  }, [isScanning, target, currentScan, generatePortGrid]);
 
   const openCount = discoveredPorts.filter(p => p.state === 'open').length;
   const closedCount = discoveredPorts.filter(p => p.state === 'closed').length;

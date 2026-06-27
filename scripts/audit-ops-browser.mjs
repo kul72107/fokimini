@@ -86,7 +86,7 @@ class CdpClient {
     });
   }
 
-  send(method, params = {}, sessionId, timeoutMs = 12000) {
+  send(method, params = {}, sessionId, timeoutMs = 20000) {
     const id = this.nextId++;
     const payload = { id, method, params };
     if (sessionId) payload.sessionId = sessionId;
@@ -129,11 +129,29 @@ function seedLocalStorageSource() {
     bio: '',
     createdAt: '2026-06-27T00:00:00.000Z',
   };
+  const targetUser = {
+    id: 2,
+    username: 'audit_target',
+    displayName: 'Audit Target',
+    name: 'Audit Target',
+    avatar: 'cat',
+    level: 4,
+    totalXp: 900,
+    role: 'user',
+    title: 'Practice Rival',
+    country: 'US',
+    bio: '',
+    createdAt: '2026-06-27T00:00:00.000Z',
+  };
   return `
     (() => {
       const user = ${JSON.stringify(user)};
+      const targetUser = ${JSON.stringify(targetUser)};
       localStorage.setItem('cyberpaw_current_user', JSON.stringify(user));
-      localStorage.setItem('cyberpaw_users', JSON.stringify({ ops_audit: { passwordHash: 'audit', user } }));
+      localStorage.setItem('cyberpaw_users', JSON.stringify({
+        ops_audit: { passwordHash: 'audit', user },
+        audit_target: { passwordHash: 'audit', user: targetUser }
+      }));
       localStorage.setItem('cyberpaw_inventory', JSON.stringify(Array.from({ length: 120 }, (_, index) => index + 1)));
       localStorage.setItem('cyberpaw_defenses', JSON.stringify({
         firewallLevel: 1,
@@ -144,6 +162,16 @@ function seedLocalStorageSource() {
         antiVirusLevel: 1,
         wafLevel: 0,
         totalDefensePower: 35
+      }));
+      localStorage.setItem('cyberpaw_defenses_2', JSON.stringify({
+        firewallLevel: 1,
+        idsLevel: 1,
+        honeypotLevel: 0,
+        encryptionLevel: 1,
+        backupLevel: 0,
+        antiVirusLevel: 1,
+        wafLevel: 0,
+        totalDefensePower: 18
       }));
       return Boolean(localStorage.getItem('cyberpaw_current_user'));
     })();
@@ -185,16 +213,26 @@ async function main() {
     await cdp.send('Runtime.enable');
 
     async function evaluate(expression, awaitPromise = false) {
-      const result = await cdp.send('Runtime.evaluate', {
-        expression,
-        awaitPromise,
-        returnByValue: true,
-        userGesture: true,
-      });
-      if (result.exceptionDetails) {
-        throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
+      let lastError;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const result = await cdp.send('Runtime.evaluate', {
+            expression,
+            awaitPromise,
+            returnByValue: true,
+            userGesture: true,
+          });
+          if (result.exceptionDetails) {
+            throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
+          }
+          return result.result?.value;
+        } catch (error) {
+          lastError = error;
+          if (!String(error.message).includes('CDP command timed out') || attempt > 0) break;
+          await sleep(500);
+        }
       }
-      return result.result?.value;
+      throw lastError;
     }
 
     async function waitFor(description, expression, timeoutMs = 12000) {
@@ -242,9 +280,9 @@ async function main() {
 
     console.error(`[audit] navigating to ${baseUrl}/fokimini/vs`);
     await cdp.send('Page.navigate', { url: `${baseUrl}/fokimini/vs` });
-    await waitFor('VS target selector', `[...document.querySelectorAll('button')].some((button) => button.innerText.includes('Start Timed Ops'))`, 18000);
+    await waitFor('VS target selector', `[...document.querySelectorAll('button')].some((button) => button.innerText.includes('Audit Target') && button.innerText.includes('Start Timed Ops'))`, 18000);
     console.error('[audit] target selector ready');
-    await clickByText('Start Timed Ops');
+    await clickByText('Audit Target');
     await waitFor('ops queue', `Boolean(document.body?.innerText.includes('Simuletool Queue') && document.body?.innerText.includes('DNS Lookup GUI'))`);
     console.error('[audit] ops queue ready');
 
@@ -315,19 +353,105 @@ async function main() {
     await waitFor('chain segment feed', `Boolean(document.body?.innerText.includes('completed chain segment 1/2') && document.body?.innerText.includes('Advanced Port Scan'))`);
     console.error('[audit] segment committed and next chain segment visible');
 
-    const summary = await evaluate(`
-      (() => ({
-        url: location.href,
-        feedHasChain: document.body.innerText.includes('completed chain segment 1/2'),
-        nextSegmentVisible: document.body.innerText.includes('Advanced Port Scan'),
-        queueVisible: document.body.innerText.includes('Simuletool Queue')
-      }))()
+    const openedSecondTool = await evaluate(`
+      (() => {
+        const buttons = [...document.querySelectorAll('button')].filter((button) => button.innerText.includes('PLAY GUI'));
+        if (!buttons[0]) return null;
+        const label = buttons[0].innerText.replace(/\\s+/g, ' ').trim();
+        buttons[0].scrollIntoView({ block: 'center' });
+        buttons[0].click();
+        return label;
+      })()
     `);
+    if (!openedSecondTool || !openedSecondTool.includes('Advanced Port Scan')) {
+      throw new Error(`Expected Advanced Port Scan as second chain segment, got ${openedSecondTool ?? 'nothing'}.`);
+    }
+    console.error(`[audit] opened ${openedSecondTool}`);
+
+    await waitFor('Nmap port scanner modal', `Boolean(document.body?.innerText.includes('Nmap Port Scanner') && document.body?.innerText.includes('Counter Stack'))`);
+    console.error('[audit] Nmap modal ready');
+    await clickByText('Shape traffic through the allowed service lane', true);
+    await clickByText('Correlate timestamps before taking the next action', true);
+    await clickByText('Bank Server');
+    await clickByText('Full Scan');
+    await clickByText('LAUNCH SCAN');
+    console.error('[audit] Nmap full scan running');
+    await waitFor('Nmap full scan completion', `Boolean(document.body?.innerText.includes('Scans: 1') || document.body?.innerText.includes('OS Guess'))`, 45000);
+
+    const nmapModalState = await evaluate(`
+      (() => {
+        const text = document.body.innerText;
+        const gateStart = text.indexOf('Step Gate');
+        const gateEnd = text.indexOf('Counter Stack');
+        const gateText = gateStart >= 0
+          ? text.slice(gateStart, gateEnd > gateStart ? gateEnd : gateStart + 700)
+          : text;
+        const scoreMatch = gateText.match(/(\\d+)\\/100/);
+        const commit = [...document.querySelectorAll('button')].find((button) => /Commit Segment|Complete VS Step/.test(button.innerText));
+        return {
+          openedTool: ${JSON.stringify(openedSecondTool)},
+          score: scoreMatch ? Number(scoreMatch[1]) : null,
+          commitText: commit ? commit.innerText.replace(/\\s+/g, ' ').trim() : null,
+          commitDisabled: commit ? Boolean(commit.disabled) : null,
+          fallbackVisible: text.includes('Ops Circuit'),
+          modalVisible: text.includes('Play the simuletool GUI'),
+        };
+      })()
+    `);
+
+    if (
+      !nmapModalState.modalVisible ||
+      nmapModalState.fallbackVisible ||
+      nmapModalState.commitText !== 'Complete VS Step' ||
+      nmapModalState.commitDisabled ||
+      (nmapModalState.score !== null && nmapModalState.score < 50)
+    ) {
+      const snapshot = await pageSnapshot(evaluate);
+      throw new Error(`Nmap modal did not become submittable: ${JSON.stringify(nmapModalState)}\n${snapshot}`);
+    }
+    console.error('[audit] Nmap modal is submittable');
+
+    await evaluate(`
+      (() => {
+        const button = [...document.querySelectorAll('button')].find((item) => /Complete VS Step/.test(item.innerText));
+        button?.click();
+        return true;
+      })()
+    `);
+    await waitFor('first VS step completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('STEPS 1/44') &&
+          text.includes('STEP 2 · WEB ANALYSIS ACTIVE') &&
+          text.toUpperCase().includes('SQL SAFARI');
+      })()
+    `, 12000);
+    console.error('[audit] first VS step completed and next ordered step visible');
+
+    const summary = await evaluate(`
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return {
+          url: location.href,
+          feedHasChain: text.includes('completed chain segment 1/2'),
+          completedFirstStep: text.includes('STEPS 1/44') && text.includes('Database Leak 1/4'),
+          nextStepVisible: text.includes('Find a data-layer route'),
+          nextSegmentVisible: /SQL SAFARI/i.test(text),
+          queueVisible: text.includes('Simuletool Queue')
+        };
+      })()
+    `);
+    if (!summary.feedHasChain || !summary.completedFirstStep || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
+      const snapshot = await pageSnapshot(evaluate);
+      throw new Error(`Completed VS step summary was incomplete: ${JSON.stringify(summary)}\n${snapshot}`);
+    }
     console.log(JSON.stringify({
       ok: true,
       baseUrl,
       openedTool,
       modalState,
+      openedSecondTool,
+      nmapModalState,
       summary,
     }, null, 2));
   } catch (error) {
@@ -345,13 +469,21 @@ async function main() {
 async function pageSnapshot(evaluate) {
   const text = await evaluate(`
     (() => {
-      const bodyText = document.body?.innerText?.replace(/\\s+/g, ' ').trim().slice(0, 1400) || '';
+      const fullText = document.body?.innerText?.replace(/\\s+/g, ' ').trim() || '';
+      const modalIndex = Math.max(
+        fullText.indexOf('Play the simuletool GUI'),
+        fullText.indexOf('Nmap Port Scanner'),
+        fullText.indexOf('DNS Lookup Tool')
+      );
+      const modalText = modalIndex >= 0 ? fullText.slice(modalIndex, modalIndex + 1600) : '';
+      const bodyText = fullText.slice(0, 1800);
       const html = document.documentElement?.outerHTML?.replace(/\\s+/g, ' ').trim().slice(0, 900) || '';
       return JSON.stringify({
         href: location.href,
         readyState: document.readyState,
         title: document.title,
         bodyText,
+        modalText,
         html
       });
     })()
