@@ -143,6 +143,18 @@ describe('ordered ops simuletool chains', () => {
     expect(second.completedToolIds).toEqual(['dns-lookup-gui', 'advanced-port-scan']);
     expect(second.created).toEqual(['recon', 'web']);
 
+    const completedStepProgress = {
+      ...progress,
+      completedSteps: [second.stepId!],
+      completedToolRuns: {
+        ...progress.completedToolRuns,
+        [second.stepId!]: second.completedToolIds!,
+      },
+    };
+
+    expect(getRecommendedTools(getNextOpsStep(objective!, completedStepProgress), completedStepProgress).map((tool) => tool.name))
+      .toEqual(['SQL Safari']);
+
     const exhaustedProgress = {
       ...progress,
       completedToolRuns: {

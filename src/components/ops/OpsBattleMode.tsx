@@ -185,6 +185,10 @@ export function OpsBattleMode({
   const suggestedTools = useMemo(() => getSuggestedTools(nextStep, selectedProgress, ownedIds), [nextStep, selectedProgress, ownedIds]);
   const activeDefenseControls = useMemo(() => getDefenseControlsForStep(nextStep, target), [nextStep, target]);
   const targetDefenseLayers = useMemo(() => getTargetDefenseLayers(target), [target]);
+  const activeModalChainItems = useMemo(() => getStepToolChainItems(nextStep), [nextStep]);
+  const activeModalChainIndex = activeToolRun
+    ? activeModalChainItems.findIndex((item) => item.tool.id === activeToolRun.id)
+    : -1;
 
   const completedCount = OPS_OBJECTIVES.filter((objective) => {
     const progress = progressMap[objective.id];
@@ -450,6 +454,9 @@ export function OpsBattleMode({
           step={nextStep}
           target={target}
           availableEffects={pinnedEffects}
+          chainPosition={activeModalChainIndex >= 0 ? activeModalChainIndex + 1 : 1}
+          chainTotal={Math.max(1, activeModalChainItems.length)}
+          nextChainToolName={activeModalChainIndex >= 0 ? activeModalChainItems[activeModalChainIndex + 1]?.tool.name : undefined}
           onCancel={() => setActiveToolRun(null)}
           onComplete={(score) => handleToolUse(activeToolRun, score)}
         />

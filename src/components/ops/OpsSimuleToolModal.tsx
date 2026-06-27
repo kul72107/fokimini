@@ -51,7 +51,6 @@ import CertViewer from '@/components/game-simulations/CertViewer';
 import XORTool from '@/components/game-simulations/XORTool';
 import TrojanBuilder from '@/components/game-simulations/TrojanBuilder';
 import KeyloggerSim from '@/components/game-simulations/KeyloggerSim';
-import CyberDuelArena from '@/components/game-simulations/CyberDuelArena';
 import {
   getEffectLabel,
   getToolOpsProfile,
@@ -69,6 +68,9 @@ interface Props {
   step: OpsStep;
   target: BattleTarget;
   availableEffects: OpsEffect[];
+  chainPosition: number;
+  chainTotal: number;
+  nextChainToolName?: string;
   onCancel: () => void;
   onComplete: (score: number) => void;
 }
@@ -262,8 +264,6 @@ function SimuleGame({
       return <TrojanBuilder onScoreChange={onScoreChange} />;
     case 'keylogger-sim':
       return <KeyloggerSim onScoreChange={onScoreChange} />;
-    case 'cyber-duel-arena':
-      return <CyberDuelArena onScoreChange={onScoreChange} />;
     default:
       return <OpsCircuitFallback onScoreChange={onScoreChange} />;
   }
@@ -425,6 +425,9 @@ export default function OpsSimuleToolModal({
   step,
   target,
   availableEffects,
+  chainPosition,
+  chainTotal,
+  nextChainToolName,
   onCancel,
   onComplete,
 }: Props) {
@@ -439,6 +442,7 @@ export default function OpsSimuleToolModal({
   const bridgedEffects = availableEffects.filter((effect) => step.accepts.includes(effect) && !profile.effects.includes(effect));
   const operationScore = Math.round((bestScore * 0.72) + (counterScore * 0.28));
   const canComplete = operationScore >= requiredScore;
+  const isFinalChainSegment = chainPosition >= chainTotal;
 
   const handleScoreChange = (score: number) => {
     const normalized = clampScore(score);
@@ -472,6 +476,9 @@ export default function OpsSimuleToolModal({
                   <span className="rounded-full border-2 border-black bg-purple-pale px-3 py-1 font-nunito text-[10px] font-black uppercase text-purple-darker">
                     {objective.title}
                   </span>
+                  <span className="rounded-full border-2 border-black bg-green-success px-3 py-1 font-nunito text-[10px] font-black uppercase text-black">
+                    Segment {chainPosition}/{chainTotal}
+                  </span>
                 </div>
                 <h2 className="font-fredoka text-3xl font-black text-purple-darker text-outline-sm">
                   {tool.name}
@@ -498,7 +505,7 @@ export default function OpsSimuleToolModal({
                   <h3 className="font-fredoka text-xl font-black text-purple-darker">Step Gate</h3>
                 </div>
                 <p className="font-nunito text-xs font-bold text-purple-dark">
-                  This VS step advances only after the simuletool GUI produces enough performance.
+                  This modal commits segment {chainPosition}/{chainTotal}. The VS step advances only after every ordered segment is complete.
                 </p>
                 <div className="mt-4 rounded-xl border-[3px] border-black bg-purple-pale p-3">
                   <div className="mb-2 flex items-center justify-between">
@@ -517,6 +524,11 @@ export default function OpsSimuleToolModal({
                   <p className="mt-1 font-nunito text-[10px] font-black uppercase text-purple-light">
                     Current tool {currentScore}/100 · Events {scoreEvents}
                   </p>
+                  {nextChainToolName && (
+                    <p className="mt-1 font-nunito text-[10px] font-black uppercase text-purple-dark">
+                      Next segment: {nextChainToolName}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -609,12 +621,14 @@ export default function OpsSimuleToolModal({
               {canComplete ? (
                 <>
                   <CheckCircle size={18} strokeWidth={3} className="text-green-success" />
-                  Operation run is strong enough for this VS step.
+                  {isFinalChainSegment
+                    ? 'Operation run is strong enough to complete this VS step.'
+                    : 'Operation run is strong enough to commit this chain segment.'}
                 </>
               ) : (
                 <>
                   <Zap size={18} strokeWidth={3} className="text-yellow-accent" />
-                  Reach {requiredScore}/100 to submit this operation step.
+                  Reach {requiredScore}/100 to submit this chain segment.
                 </>
               )}
             </div>
@@ -628,7 +642,7 @@ export default function OpsSimuleToolModal({
               }`}
             >
               <CheckCircle size={22} strokeWidth={3} />
-              Commit VS Step
+              {isFinalChainSegment ? 'Complete VS Step' : 'Commit Segment'}
             </button>
           </div>
         </motion.div>
