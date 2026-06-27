@@ -210,4 +210,53 @@ describe('ordered ops simuletool chains', () => {
 
     expect(getRecommendedTools(getNextOpsStep(objective!, exhaustedProgress), exhaustedProgress)).toEqual([]);
   });
+
+  it('walks every objective through ordered GUI segments without random fallback progress', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    for (const objective of OPS_OBJECTIVES) {
+      let progress = createInitialOpsProgress()[objective.id];
+      let guard = 0;
+
+      while (getNextOpsStep(objective, progress)) {
+        const nextStep = getNextOpsStep(objective, progress);
+        const recommended = getRecommendedTools(nextStep, progress);
+        expect(recommended).toHaveLength(1);
+
+        const outcome = resolveOpsAction({
+          objective,
+          progress,
+          tool: recommended[0],
+          target: lowDefenseTarget,
+          isOwned: true,
+          simuleScore: 100,
+        });
+
+        expect(outcome.status).toBe('complete');
+        expect(outcome.completedToolIds).toContain(outcome.opsToolId);
+
+        const nextToolRuns = { ...(progress.completedToolRuns ?? {}) };
+        if (outcome.stepId && outcome.completedToolIds) {
+          nextToolRuns[outcome.stepId] = outcome.completedToolIds;
+        }
+
+        const nextCompletedSteps = [...progress.completedSteps];
+        if (outcome.stepComplete && outcome.stepId && !nextCompletedSteps.includes(outcome.stepId)) {
+          nextCompletedSteps.push(outcome.stepId);
+        }
+
+        progress = {
+          ...progress,
+          completedSteps: nextCompletedSteps,
+          completedToolRuns: nextToolRuns,
+          score: progress.score + outcome.points,
+        };
+        guard += 1;
+        expect(guard).toBeLessThan(100);
+      }
+
+      expect(progress.completedSteps).toHaveLength(objective.steps.length);
+      expect(getRecommendedTools(getNextOpsStep(objective, progress), progress)).toEqual([]);
+    }
+  });
 });
