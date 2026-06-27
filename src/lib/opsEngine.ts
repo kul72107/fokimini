@@ -105,6 +105,7 @@ export interface OpsActionOutcome {
   stepId?: string;
   toolId: number;
   points: number;
+  simuleScore?: number;
   created: OpsEffect[];
   bridgeEffects?: OpsEffect[];
   message: string;
@@ -1403,6 +1404,7 @@ export function resolveOpsAction({
   target,
   isOwned,
   availableEffects = [],
+  simuleScore = 0,
 }: {
   objective: OpsObjective;
   progress: OpsProgress;
@@ -1410,9 +1412,11 @@ export function resolveOpsAction({
   target: BattleTarget;
   isOwned: boolean;
   availableEffects?: OpsEffect[];
+  simuleScore?: number;
 }): OpsActionOutcome {
   const nextStep = getNextOpsStep(objective, progress);
   const profile = getToolOpsProfile(tool);
+  const performance = Math.max(0, Math.min(100, Math.round(simuleScore)));
 
   if (!nextStep) {
     return {
@@ -1420,6 +1424,7 @@ export function resolveOpsAction({
       objectiveId: objective.id,
       toolId: tool.id,
       points: 0,
+      simuleScore: performance,
       created: [],
       message: `${objective.title} is already complete.`,
     };
@@ -1437,8 +1442,30 @@ export function resolveOpsAction({
       stepId: nextStep.id,
       toolId: tool.id,
       points: 8,
+      simuleScore: performance,
       created: [],
       message: `${tool.name} is useful elsewhere, but it does not move "${nextStep.title}" forward.`,
+    };
+  }
+
+  const requiredPerformance = objective.difficulty === 1 ? 40 : objective.difficulty === 2 ? 50 : 60;
+  if (performance < requiredPerformance) {
+    const counter = nextStep.defenderCounters[Math.floor(Math.random() * nextStep.defenderCounters.length)];
+    const defenseControl = pickDefenseControl(counter, target);
+    return {
+      status: 'blocked',
+      objectiveId: objective.id,
+      stepId: nextStep.id,
+      toolId: tool.id,
+      points: Math.max(4, Math.round(performance / 6)),
+      simuleScore: performance,
+      created: [],
+      bridgeEffects: bridgeMatches,
+      counter: defenseControl.name,
+      counterEffect: counter,
+      counterDescription: defenseControl.description,
+      counterMiniGame: defenseControl.miniGame,
+      message: `${tool.name} only produced ${performance}/100 in the simuletool run, so ${target.displayName}'s ${defenseControl.name} held "${nextStep.title}". ${defenseControl.miniGame}`,
     };
   }
 
@@ -1450,7 +1477,8 @@ export function resolveOpsAction({
   const ownedBonus = isOwned ? 10 : 0;
   const stabilityBonus = profile.stability * 4;
   const bridgeRisk = bridgeOnly ? 7 : bridgeMatches.length > 0 ? 3 : 0;
-  const blockChance = Math.max(6, Math.min(44, defensePressure - stabilityBonus - ownedBonus + (counterHit ? 8 : 0) + bridgeRisk));
+  const performanceBonus = Math.round((performance - requiredPerformance) / 4);
+  const blockChance = Math.max(4, Math.min(48, defensePressure - stabilityBonus - ownedBonus + (counterHit ? 8 : 0) + bridgeRisk - performanceBonus));
   const blocked = Math.random() * 100 < blockChance;
 
   if (blocked) {
@@ -1462,6 +1490,7 @@ export function resolveOpsAction({
       stepId: nextStep.id,
       toolId: tool.id,
       points: 12,
+      simuleScore: performance,
       created: [],
       bridgeEffects: bridgeMatches,
       counter: defenseControl.name,
@@ -1475,11 +1504,13 @@ export function resolveOpsAction({
   const stepIndex = objective.steps.findIndex((step) => step.id === nextStep.id);
   const bridgeBonus = bridgeMatches.length > 0 ? 14 : 0;
   const bridgePenalty = bridgeOnly ? 16 : 0;
-  const points = Math.round(objective.reward / objective.steps.length + tool.power / 3 + (isOwned ? 18 : 6) + bridgeBonus - bridgePenalty);
+  const performancePoints = Math.round((performance - requiredPerformance) / 2);
+  const points = Math.round(objective.reward / objective.steps.length + tool.power / 3 + (isOwned ? 18 : 6) + bridgeBonus - bridgePenalty + performancePoints);
   const completed = stepIndex === objective.steps.length - 1;
   const bridgeText = bridgeMatches.length > 0
     ? ` using pinned ${bridgeMatches.map(getEffectLabel).join(' + ')} access`
     : '';
+  const performanceText = ` Simuletool performance: ${performance}/100.`;
 
   return {
     status: 'complete',
@@ -1487,11 +1518,12 @@ export function resolveOpsAction({
     stepId: nextStep.id,
     toolId: tool.id,
     points: completed ? points + Math.round(objective.reward * 0.25) : points,
+    simuleScore: performance,
     created: nextStep.creates,
     bridgeEffects: bridgeMatches,
     message: completed
-      ? `${objective.result} achieved through ${tool.name}${bridgeText}.`
-      : `${nextStep.result}. ${tool.name}${bridgeText} opened the next operation step.`,
+      ? `${objective.result} achieved through ${tool.name}${bridgeText}.${performanceText}`
+      : `${nextStep.result}. ${tool.name}${bridgeText} opened the next operation step.${performanceText}`,
   };
 }
 

@@ -39,6 +39,7 @@ import IDSAlert from '@/components/game-simulations/IDSAlert';
 import CertificateChain from '@/components/game-simulations/CertificateChain';
 import ProxyServer from '@/components/game-simulations/ProxyServer';
 import PortScanner from '@/components/game-simulations/PortScanner';
+import PacketSnifferGUI from '@/components/game-simulations/PacketSnifferGUI';
 import EncryptionPipeline from '@/components/game-simulations/EncryptionPipeline';
 import SQLSafari from '@/components/game-simulations/SQLSafari';
 import StegoSpy from '@/components/game-simulations/StegoSpy';
@@ -152,14 +153,10 @@ function GameSimulation({
     case 'cert-viewer-gui':
       return <CertViewer onScoreChange={onScoreChange} />;
     case 'advanced-port-scan': {
-      const g = getGameById(gameId);
-      if (!g) return null;
-      return <ComingSoon gameTitle={g.title} gameDescription={g.description} category={g.category} difficulty={g.difficulty} />;
+      return <NmapScanner onScoreChange={onScoreChange} />;
     }
     case 'network-packet-tracer': {
-      const g = getGameById(gameId);
-      if (!g) return null;
-      return <ComingSoon gameTitle={g.title} gameDescription={g.description} category={g.category} difficulty={g.difficulty} />;
+      return <PacketSnifferGUI onScoreChange={onScoreChange} />;
     }
     case 'xor-tool':
       return <XORTool onScoreChange={onScoreChange} />;

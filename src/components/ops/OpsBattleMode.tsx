@@ -23,7 +23,6 @@ import {
   Zap,
 } from 'lucide-react';
 import {
-  ALL_TOOLS,
   getUserTools,
   type AttackTool,
   type BattleTarget,
@@ -56,6 +55,7 @@ import {
   type OpsProgress,
   type OpsDefenseControl,
 } from '@/lib/opsEngine';
+import OpsSimuleToolModal from './OpsSimuleToolModal';
 
 export type { OpsMatchSummary };
 
@@ -140,11 +140,8 @@ function getSuggestedTools(step: ReturnType<typeof getNextOpsStep>, ownedIds: Se
   const recommended = getRecommendedTools(step, availableEffects);
   const ownedRecommended = recommended.filter((tool) => ownedIds.has(tool.id));
   const borrowedRecommended = recommended.filter((tool) => !ownedIds.has(tool.id));
-  const ownedWildcards = ALL_TOOLS
-    .filter((tool) => ownedIds.has(tool.id) && !recommended.some((candidate) => candidate.id === tool.id))
-    .slice(0, 4);
 
-  return [...ownedRecommended, ...borrowedRecommended, ...ownedWildcards].slice(0, 12);
+  return [...ownedRecommended, ...borrowedRecommended].slice(0, 12);
 }
 
 interface TimelineEvent extends OpsActionOutcome {
@@ -176,6 +173,7 @@ export function OpsBattleMode({
   const [defenseTimeline, setDefenseTimeline] = useState<DefenseTimelineEvent[]>([]);
   const [usedToolIds, setUsedToolIds] = useState<number[]>([]);
   const [finished, setFinished] = useState(false);
+  const [activeToolRun, setActiveToolRun] = useState<AttackTool | null>(null);
 
   const ownedIds = useMemo(() => new Set(getUserTools(user.id).map((tool) => tool.id)), [user.id]);
   const selectedObjective = OPS_OBJECTIVES.find((objective) => objective.id === selectedObjectiveId) ?? OPS_OBJECTIVES[0];
@@ -220,8 +218,14 @@ export function OpsBattleMode({
     }
   }, [completedCount]);
 
-  const handleToolUse = (tool: AttackTool) => {
+  const openToolRun = (tool: AttackTool) => {
+    if (finished || !nextStep) return;
+    setActiveToolRun(tool);
+  };
+
+  const handleToolUse = (tool: AttackTool, simuleScore: number) => {
     if (finished) return;
+    setActiveToolRun(null);
     setUsedToolIds((current) => current.includes(tool.id) ? current : [...current, tool.id]);
     const progress = progressMap[selectedObjective.id];
     const outcome = resolveOpsAction({
@@ -231,6 +235,7 @@ export function OpsBattleMode({
       target,
       isOwned: ownedIds.has(tool.id),
       availableEffects: pinnedEffects,
+      simuleScore,
     });
 
     setProgressMap((current) => {
@@ -399,7 +404,7 @@ export function OpsBattleMode({
             suggestedTools={suggestedTools}
             ownedIds={ownedIds}
             availableEffects={pinnedEffects}
-            onUseTool={handleToolUse}
+            onUseTool={openToolRun}
           />
         </div>
 
@@ -429,6 +434,18 @@ export function OpsBattleMode({
           Jump To Next Open Goal
         </button>
       </div>
+
+      {activeToolRun && nextStep && (
+        <OpsSimuleToolModal
+          tool={activeToolRun}
+          objective={selectedObjective}
+          step={nextStep}
+          target={target}
+          availableEffects={pinnedEffects}
+          onCancel={() => setActiveToolRun(null)}
+          onComplete={(score) => handleToolUse(activeToolRun, score)}
+        />
+      )}
     </motion.div>
   );
 }
@@ -797,7 +814,7 @@ function ToolRunner({
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Zap size={20} strokeWidth={3} className="text-yellow-accent" />
-          <h2 className="font-fredoka text-xl font-black text-purple-darker">Action Kit</h2>
+          <h2 className="font-fredoka text-xl font-black text-purple-darker">Simuletool Queue</h2>
         </div>
         {nextStep && (
           <span className="rounded-full border-2 border-black bg-purple-pale px-3 py-1 font-nunito text-[10px] font-black uppercase text-purple-darker">
@@ -812,7 +829,11 @@ function ToolRunner({
           <p className="font-fredoka text-lg font-black text-purple-darker">This objective is complete.</p>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <p className="mb-3 font-nunito text-xs font-bold text-purple-dark">
+            These tools are surfaced from the active step, pinned operation assets, and target defenses. Pick one to open its playable GUI.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
           {suggestedTools.map((tool) => {
             const profile = getToolOpsProfile(tool);
             const owned = ownedIds.has(tool.id);
@@ -836,6 +857,9 @@ function ToolRunner({
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="truncate font-fredoka text-sm font-black text-purple-darker">{tool.name}</h3>
                       <div className="flex flex-shrink-0 gap-1">
+                        <span className="rounded-full border border-black bg-purple-primary px-1.5 py-0.5 font-nunito text-[8px] font-black text-white">
+                          PLAY GUI
+                        </span>
                         {bridgeMatches && (
                           <span className="rounded-full border border-black bg-yellow-accent px-1.5 py-0.5 font-nunito text-[8px] font-black text-black">
                             BRIDGE
@@ -858,6 +882,15 @@ function ToolRunner({
               </button>
             );
           })}
+          </div>
+          {suggestedTools.length === 0 && (
+            <div className="rounded-xl border-[3px] border-black bg-yellow-accent/30 p-4 text-center">
+              <AlertTriangle size={30} strokeWidth={3} className="mx-auto mb-2 text-purple-primary" />
+              <p className="font-nunito text-sm font-black text-purple-darker">
+                No matching simuletool is available for this step yet.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -918,7 +951,7 @@ function TimelineRow({ event }: { event: TimelineEvent }) {
         </div>
       )}
       <p className="mt-1 font-nunito text-[10px] font-black text-purple-light">
-        {event.toolName} · +{event.points} pts
+        {event.toolName} · GUI {event.simuleScore ?? 0}/100 · +{event.points} pts
       </p>
     </motion.div>
   );
