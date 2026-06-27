@@ -5,6 +5,7 @@ import {
   type BattleTarget,
   type DefenseState,
 } from './battleEngine';
+import { SIMULE_TOOLS } from '@/components/game-simulations/simuleTools';
 
 export type OpsEffect =
   | 'recon'
@@ -71,6 +72,7 @@ export interface OpsObjective {
 export interface OpsProgress {
   objectiveId: string;
   completedSteps: string[];
+  completedToolRuns: Record<string, string[]>;
   blocked: number;
   score: number;
 }
@@ -104,6 +106,10 @@ export interface OpsActionOutcome {
   objectiveId: string;
   stepId?: string;
   toolId: number;
+  opsToolId?: string;
+  requiredOpsToolId?: string;
+  completedToolIds?: string[];
+  stepComplete?: boolean;
   points: number;
   simuleScore?: number;
   created: OpsEffect[];
@@ -172,6 +178,11 @@ export interface OpsDefenseOutcome {
   message: string;
   controlName?: string;
   effects: OpsEffect[];
+}
+
+export interface OpsStepToolChainItem {
+  opsToolId: string;
+  tool: AttackTool;
 }
 
 export const OPS_DEFENSE_CONTROLS: OpsDefenseControl[] = [
@@ -1144,27 +1155,76 @@ function getSpecificDefenseBonus(effects: OpsEffect[], target?: BattleTarget) {
     .reduce((sum, layer) => sum + layer.level, 0);
 }
 
-const BRIDGE_OPERATOR_EFFECTS: OpsEffect[] = [
-  'recon',
-  'osint',
-  'log',
-  'traffic',
-  'proxy',
-  'session',
-  'credential',
-  'web',
-  'network',
-  'defense',
-  'patch',
-  'cert',
-  'crypto',
-];
+const OPS_EXCLUDED_TOOL_IDS = new Set([
+  'cyber-duel-arena',
+  'password-quest',
+]);
+
+const OPS_STEP_TOOL_CHAINS: Record<string, string[]> = {
+  'map-web-surface': ['dns-lookup-gui', 'advanced-port-scan'],
+  'find-data-route': ['sql-safari'],
+  'open-query-window': ['sql-injector-gui'],
+  'pull-db-proof': ['encryption-pipeline'],
+
+  'profile-admin': ['whois-lookup'],
+  'test-credential-path': ['hash-cracker-gui'],
+  'stabilize-session': ['ssl-handshake'],
+
+  'observe-session-path': ['network-packet-tracer', 'cert-viewer-gui'],
+  'capture-session-artifact': ['keylogger-sim'],
+  'replay-lab-session': ['proxy-server'],
+
+  'find-upload-or-cms': ['nmap-scanner'],
+  'bypass-content-guard': ['xss-tester-gui'],
+  'plant-web-payload': ['trojan-builder'],
+
+  'deliver-lab-payload': ['phishing-sim-gui'],
+  'establish-endpoint-view': ['trojan-builder'],
+  'collect-key-telemetry': ['keylogger-sim'],
+
+  'gain-local-context': ['trojan-builder'],
+  'locate-browser-store': ['log-analyzer'],
+  'extract-cookie-proof': ['encryption-pipeline'],
+
+  'map-code-surface': ['whois-lookup', 'dns-lookup-gui'],
+  'find-secret-pattern': ['xor-tool', 'hash-cracker-gui'],
+  'validate-revoked-key': ['proxy-server'],
+
+  'trace-network-path': ['network-navigator'],
+  'find-service-gap': ['nmap-scanner'],
+  'open-tunnel-window': ['vpn-tunnel'],
+
+  'find-traffic-choke': ['network-packet-tracer'],
+  'stress-routing-layer': ['proxy-server'],
+  'force-failover': ['load-balancer'],
+
+  'place-local-network-hook': ['trojan-builder'],
+  'alter-name-resolution': ['dns-resolver'],
+  'validate-cert-mismatch': ['cert-viewer-gui'],
+
+  'discover-backup-surface': ['whois-lookup', 'dns-lookup-gui'],
+  'test-access-policy': ['access-ace'],
+  'pull-index-proof': ['encryption-pipeline'],
+
+  'profile-user-journey': ['whois-lookup', 'phishing-detective'],
+  'stage-fake-prompt': ['phishing-sim-gui'],
+  'capture-consent-proof': ['access-ace'],
+
+  'map-vendor-footprint': ['whois-lookup', 'dns-lookup-gui'],
+  'verify-widget-trust': ['cert-viewer-gui'],
+  'stage-sandbox-widget': ['xss-xpert'],
+  'pull-widget-proof': ['encryption-pipeline'],
+
+  'read-incoming-evidence': ['log-analyzer'],
+  'apply-specific-control': ['firewall-defender'],
+  'verify-recovery': ['cert-champion'],
+};
 
 export function createInitialOpsProgress(): Record<string, OpsProgress> {
   return Object.fromEntries(
     OPS_OBJECTIVES.map((objective) => [
       objective.id,
-      { objectiveId: objective.id, completedSteps: [], blocked: 0, score: 0 },
+      { objectiveId: objective.id, completedSteps: [], completedToolRuns: {}, blocked: 0, score: 0 },
     ]),
   );
 }
@@ -1180,6 +1240,43 @@ export function createInitialOpsDefenseProgress(): Record<string, OpsDefenseProg
 
 function addEffects(effects: Set<OpsEffect>, values: OpsEffect[]) {
   values.forEach((value) => effects.add(value));
+}
+
+export function getOpsToolId(tool: AttackTool): string | null {
+  return SIMULE_TOOLS.find((candidate) => candidate.battleId === tool.id)?.id ?? null;
+}
+
+function getAttackToolByOpsId(opsToolId: string): AttackTool | null {
+  const simuleTool = SIMULE_TOOLS.find((tool) => tool.id === opsToolId || tool.gameId === opsToolId);
+  if (!simuleTool || OPS_EXCLUDED_TOOL_IDS.has(simuleTool.id)) return null;
+  return ALL_TOOLS.find((tool) => tool.id === simuleTool.battleId) ?? null;
+}
+
+export function getStepToolIds(step: OpsStep | null): string[] {
+  if (!step) return [];
+  return (OPS_STEP_TOOL_CHAINS[step.id] ?? []).filter((toolId) => {
+    const simuleTool = SIMULE_TOOLS.find((tool) => tool.id === toolId || tool.gameId === toolId);
+    return Boolean(simuleTool && !OPS_EXCLUDED_TOOL_IDS.has(simuleTool.id));
+  });
+}
+
+export function getStepToolChainItems(step: OpsStep | null): OpsStepToolChainItem[] {
+  return getStepToolIds(step)
+    .map((opsToolId) => {
+      const tool = getAttackToolByOpsId(opsToolId);
+      return tool ? { opsToolId, tool } : null;
+    })
+    .filter((item): item is OpsStepToolChainItem => Boolean(item));
+}
+
+export function getCompletedStepToolIds(progress: OpsProgress | undefined, stepId: string): string[] {
+  return progress?.completedToolRuns?.[stepId] ?? [];
+}
+
+export function getNextStepToolId(step: OpsStep | null, progress: OpsProgress | undefined): string | null {
+  if (!step) return null;
+  const completed = new Set(getCompletedStepToolIds(progress, step.id));
+  return getStepToolIds(step).find((toolId) => !completed.has(toolId)) ?? null;
 }
 
 export function getToolOpsProfile(tool: AttackTool): ToolOpsProfile {
@@ -1254,30 +1351,12 @@ function getMatchingEffects(effects: OpsEffect[], accepts: OpsEffect[]) {
   return effects.filter((effect) => accepts.includes(effect));
 }
 
-function canUseBridgeOperator(profile: ToolOpsProfile, step: OpsStep) {
-  return profile.effects.some(
-    (effect) => step.creates.includes(effect) || BRIDGE_OPERATOR_EFFECTS.includes(effect),
-  );
-}
-
-export function getRecommendedTools(step: OpsStep | null, availableEffects: OpsEffect[] = []): AttackTool[] {
+export function getRecommendedTools(step: OpsStep | null, progress?: OpsProgress): AttackTool[] {
   if (!step) return [];
-  const bridgeAvailable = getMatchingEffects(availableEffects, step.accepts).length > 0;
-  return ALL_TOOLS
-    .map((tool) => {
-      const profile = getToolOpsProfile(tool);
-      const direct = getMatchingEffects(profile.effects, step.accepts).length > 0;
-      const bridge = bridgeAvailable && canUseBridgeOperator(profile, step);
-      return { tool, direct, bridge, tier: tool.tier, power: tool.power };
-    })
-    .filter((candidate) => candidate.direct || candidate.bridge)
-    .sort((a, b) => {
-      if (a.direct !== b.direct) return a.direct ? -1 : 1;
-      if (a.bridge !== b.bridge) return a.bridge ? -1 : 1;
-      return b.tier - a.tier || b.power - a.power;
-    })
-    .map((candidate) => candidate.tool)
-    .slice(0, 10);
+  const nextToolId = getNextStepToolId(step, progress);
+  if (!nextToolId) return [];
+  const tool = getAttackToolByOpsId(nextToolId);
+  return tool ? [tool] : [];
 }
 
 export function getDefenseControlsForEffects(effects: OpsEffect[], target?: BattleTarget): OpsDefenseControl[] {
@@ -1423,6 +1502,7 @@ export function resolveOpsAction({
       status: 'already_done',
       objectiveId: objective.id,
       toolId: tool.id,
+      opsToolId: getOpsToolId(tool) ?? undefined,
       points: 0,
       simuleScore: performance,
       created: [],
@@ -1430,23 +1510,76 @@ export function resolveOpsAction({
     };
   }
 
-  const directMatches = getMatchingEffects(profile.effects, nextStep.accepts);
-  const bridgeMatches = getMatchingEffects(availableEffects, nextStep.accepts)
-    .filter((effect) => !profile.effects.includes(effect));
-  const bridgeAllowed = bridgeMatches.length > 0 && canUseBridgeOperator(profile, nextStep);
+  const opsToolId = getOpsToolId(tool);
+  const stepToolChain = getStepToolIds(nextStep);
+  const completedToolIds = getCompletedStepToolIds(progress, nextStep.id);
+  const requiredOpsToolId = getNextStepToolId(nextStep, progress);
+  const requiredTool = requiredOpsToolId ? getAttackToolByOpsId(requiredOpsToolId) : null;
 
-  if (directMatches.length === 0 && !bridgeAllowed) {
+  if (stepToolChain.length === 0 || !requiredOpsToolId || !requiredTool) {
     return {
       status: 'off_path',
       objectiveId: objective.id,
       stepId: nextStep.id,
       toolId: tool.id,
-      points: 8,
+      opsToolId: opsToolId ?? undefined,
+      points: 0,
       simuleScore: performance,
       created: [],
-      message: `${tool.name} is useful elsewhere, but it does not move "${nextStep.title}" forward.`,
+      message: `"${nextStep.title}" does not have a playable operation chain yet, so it cannot progress by random tool use.`,
     };
   }
+
+  if (!opsToolId || OPS_EXCLUDED_TOOL_IDS.has(opsToolId) || !stepToolChain.includes(opsToolId)) {
+    return {
+      status: 'off_path',
+      objectiveId: objective.id,
+      stepId: nextStep.id,
+      toolId: tool.id,
+      opsToolId: opsToolId ?? undefined,
+      requiredOpsToolId,
+      points: 0,
+      simuleScore: performance,
+      created: [],
+      message: `${tool.name} is not part of "${nextStep.title}". The chain expects ${requiredTool.name} next.`,
+    };
+  }
+
+  if (completedToolIds.includes(opsToolId)) {
+    return {
+      status: 'already_done',
+      objectiveId: objective.id,
+      stepId: nextStep.id,
+      toolId: tool.id,
+      opsToolId,
+      requiredOpsToolId,
+      completedToolIds,
+      points: 0,
+      simuleScore: performance,
+      created: [],
+      message: `${tool.name} is already complete for "${nextStep.title}". Next required simuletool: ${requiredTool.name}.`,
+    };
+  }
+
+  if (opsToolId !== requiredOpsToolId) {
+    return {
+      status: 'off_path',
+      objectiveId: objective.id,
+      stepId: nextStep.id,
+      toolId: tool.id,
+      opsToolId,
+      requiredOpsToolId,
+      completedToolIds,
+      points: 0,
+      simuleScore: performance,
+      created: [],
+      message: `${tool.name} belongs later in this route, but "${nextStep.title}" expects ${requiredTool.name} now.`,
+    };
+  }
+
+  const directMatches = getMatchingEffects(profile.effects, nextStep.accepts);
+  const bridgeMatches = getMatchingEffects(availableEffects, nextStep.accepts)
+    .filter((effect) => !profile.effects.includes(effect));
 
   const requiredPerformance = objective.difficulty === 1 ? 40 : objective.difficulty === 2 ? 50 : 60;
   if (performance < requiredPerformance) {
@@ -1457,6 +1590,9 @@ export function resolveOpsAction({
       objectiveId: objective.id,
       stepId: nextStep.id,
       toolId: tool.id,
+      opsToolId,
+      requiredOpsToolId,
+      completedToolIds,
       points: Math.max(4, Math.round(performance / 6)),
       simuleScore: performance,
       created: [],
@@ -1469,16 +1605,17 @@ export function resolveOpsAction({
     };
   }
 
+  const nextCompletedToolIds = [...new Set([...completedToolIds, opsToolId])];
+  const stepComplete = nextCompletedToolIds.length >= stepToolChain.length;
   const combinedEffects = [...new Set([...profile.effects, ...bridgeMatches])];
-  const bridgeOnly = directMatches.length === 0 && bridgeAllowed;
   const counterHit = nextStep.defenderCounters.some((counter) => combinedEffects.includes(counter));
   const specificDefensePressure = Math.min(18, getSpecificDefenseBonus(nextStep.defenderCounters, target) / 2);
   const defensePressure = Math.min(54, Math.max(8, target.defensePower / 6 + objective.risk / 5 + specificDefensePressure));
   const ownedBonus = isOwned ? 10 : 0;
   const stabilityBonus = profile.stability * 4;
-  const bridgeRisk = bridgeOnly ? 7 : bridgeMatches.length > 0 ? 3 : 0;
+  const chainFitRisk = directMatches.length === 0 ? 4 : 0;
   const performanceBonus = Math.round((performance - requiredPerformance) / 4);
-  const blockChance = Math.max(4, Math.min(48, defensePressure - stabilityBonus - ownedBonus + (counterHit ? 8 : 0) + bridgeRisk - performanceBonus));
+  const blockChance = Math.max(4, Math.min(48, defensePressure - stabilityBonus - ownedBonus + (counterHit ? 8 : 0) + chainFitRisk - performanceBonus));
   const blocked = Math.random() * 100 < blockChance;
 
   if (blocked) {
@@ -1489,6 +1626,9 @@ export function resolveOpsAction({
       objectiveId: objective.id,
       stepId: nextStep.id,
       toolId: tool.id,
+      opsToolId,
+      requiredOpsToolId,
+      completedToolIds,
       points: 12,
       simuleScore: performance,
       created: [],
@@ -1503,25 +1643,34 @@ export function resolveOpsAction({
 
   const stepIndex = objective.steps.findIndex((step) => step.id === nextStep.id);
   const bridgeBonus = bridgeMatches.length > 0 ? 14 : 0;
-  const bridgePenalty = bridgeOnly ? 16 : 0;
   const performancePoints = Math.round((performance - requiredPerformance) / 2);
-  const points = Math.round(objective.reward / objective.steps.length + tool.power / 3 + (isOwned ? 18 : 6) + bridgeBonus - bridgePenalty + performancePoints);
+  const stepPoints = Math.round(objective.reward / objective.steps.length + tool.power / 3 + (isOwned ? 18 : 6) + bridgeBonus + performancePoints);
+  const segmentPoints = Math.round(18 + tool.power / 4 + performance / 8);
+  const points = stepComplete ? stepPoints : segmentPoints;
   const completed = stepIndex === objective.steps.length - 1;
   const bridgeText = bridgeMatches.length > 0
     ? ` using pinned ${bridgeMatches.map(getEffectLabel).join(' + ')} access`
     : '';
   const performanceText = ` Simuletool performance: ${performance}/100.`;
+  const nextOpsToolId = stepToolChain.find((toolId) => !nextCompletedToolIds.includes(toolId));
+  const nextTool = nextOpsToolId ? getAttackToolByOpsId(nextOpsToolId) : null;
 
   return {
     status: 'complete',
     objectiveId: objective.id,
     stepId: nextStep.id,
     toolId: tool.id,
-    points: completed ? points + Math.round(objective.reward * 0.25) : points,
+    opsToolId,
+    requiredOpsToolId,
+    completedToolIds: nextCompletedToolIds,
+    stepComplete,
+    points: stepComplete && completed ? points + Math.round(objective.reward * 0.25) : points,
     simuleScore: performance,
-    created: nextStep.creates,
+    created: stepComplete ? nextStep.creates : [],
     bridgeEffects: bridgeMatches,
-    message: completed
+    message: !stepComplete
+      ? `${tool.name} completed chain segment ${nextCompletedToolIds.length}/${stepToolChain.length} for "${nextStep.title}". Next simuletool: ${nextTool?.name ?? 'ready to finalize'}.${performanceText}`
+      : completed
       ? `${objective.result} achieved through ${tool.name}${bridgeText}.${performanceText}`
       : `${nextStep.result}. ${tool.name}${bridgeText} opened the next operation step.${performanceText}`,
   };

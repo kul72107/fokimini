@@ -39,6 +39,8 @@ import {
   getNextOpsDefenseStep,
   getOpsDefenseProgressStats,
   getRecommendedTools,
+  getCompletedStepToolIds,
+  getStepToolChainItems,
   getTargetDefenseLayers,
   getToolOpsProfile,
   resolveOpsDefenseAction,
@@ -135,9 +137,9 @@ function getObjectiveState(objective: OpsObjective, progress: OpsProgress) {
   };
 }
 
-function getSuggestedTools(step: ReturnType<typeof getNextOpsStep>, ownedIds: Set<number>, availableEffects: OpsEffect[]) {
+function getSuggestedTools(step: ReturnType<typeof getNextOpsStep>, progress: OpsProgress | undefined, ownedIds: Set<number>) {
   if (!step) return [];
-  const recommended = getRecommendedTools(step, availableEffects);
+  const recommended = getRecommendedTools(step, progress);
   const ownedRecommended = recommended.filter((tool) => ownedIds.has(tool.id));
   const borrowedRecommended = recommended.filter((tool) => !ownedIds.has(tool.id));
 
@@ -180,7 +182,7 @@ export function OpsBattleMode({
   const selectedProgress = progressMap[selectedObjective.id];
   const nextStep = getNextOpsStep(selectedObjective, selectedProgress);
   const pinnedEffects = useMemo(() => getAllCreatedEffects(progressMap), [progressMap]);
-  const suggestedTools = useMemo(() => getSuggestedTools(nextStep, ownedIds, pinnedEffects), [nextStep, ownedIds, pinnedEffects]);
+  const suggestedTools = useMemo(() => getSuggestedTools(nextStep, selectedProgress, ownedIds), [nextStep, selectedProgress, ownedIds]);
   const activeDefenseControls = useMemo(() => getDefenseControlsForStep(nextStep, target), [nextStep, target]);
   const targetDefenseLayers = useMemo(() => getTargetDefenseLayers(target), [target]);
 
@@ -240,8 +242,12 @@ export function OpsBattleMode({
 
     setProgressMap((current) => {
       const existing = current[selectedObjective.id];
+      const nextToolRuns = { ...(existing.completedToolRuns ?? {}) };
+      if (outcome.status === 'complete' && outcome.stepId && outcome.completedToolIds) {
+        nextToolRuns[outcome.stepId] = outcome.completedToolIds;
+      }
       const nextCompleted = [...existing.completedSteps];
-      if (outcome.status === 'complete' && outcome.stepId && !nextCompleted.includes(outcome.stepId)) {
+      if (outcome.status === 'complete' && outcome.stepComplete && outcome.stepId && !nextCompleted.includes(outcome.stepId)) {
         nextCompleted.push(outcome.stepId);
       }
       return {
@@ -249,6 +255,7 @@ export function OpsBattleMode({
         [selectedObjective.id]: {
           ...existing,
           completedSteps: nextCompleted,
+          completedToolRuns: nextToolRuns,
           blocked: existing.blocked + (outcome.status === 'blocked' ? 1 : 0),
           score: existing.score + outcome.points,
         },
@@ -587,6 +594,11 @@ function ObjectiveDetail({
         {objective.steps.map((step, index) => {
           const complete = progress.completedSteps.includes(step.id);
           const current = nextStep?.id === step.id;
+          const chainItems = getStepToolChainItems(step);
+          const completedChainIds = getCompletedStepToolIds(progress, step.id);
+          const activeChainId = current
+            ? chainItems.find((item) => !completedChainIds.includes(item.opsToolId))?.opsToolId
+            : null;
           return (
             <div
               key={step.id}
@@ -612,6 +624,26 @@ function ObjectiveDetail({
                   </div>
                   <h3 className="font-fredoka text-base font-black text-purple-darker">{step.title}</h3>
                   <p className="font-nunito text-xs font-bold text-purple-dark">{complete ? step.result : `Accepts: ${step.accepts.map(getEffectLabel).join(', ')}`}</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {chainItems.map((item, chainIndex) => {
+                      const chainDone = completedChainIds.includes(item.opsToolId) || complete;
+                      const chainActive = activeChainId === item.opsToolId;
+                      return (
+                        <span
+                          key={item.opsToolId}
+                          className={`rounded-full border border-black px-2 py-0.5 font-nunito text-[9px] font-black uppercase ${
+                            chainDone
+                              ? 'bg-green-success text-black'
+                              : chainActive
+                                ? 'bg-yellow-accent text-black'
+                                : 'bg-white text-purple-darker'
+                          }`}
+                        >
+                          {chainIndex + 1}. {item.tool.name}
+                        </span>
+                      );
+                    })}
+                  </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {getDefenseControlsForStep(step).slice(0, 3).map((control) => (
                       <span key={control.id} className="rounded-full border border-black bg-white px-2 py-0.5 font-nunito text-[9px] font-black uppercase text-purple-darker">
@@ -831,7 +863,7 @@ function ToolRunner({
       ) : (
         <div>
           <p className="mb-3 font-nunito text-xs font-bold text-purple-dark">
-            These tools are surfaced from the active step, pinned operation assets, and target defenses. Pick one to open its playable GUI.
+            This queue shows only the next required simuletool in the active operation chain. Wrong-order tools cannot advance progress.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
           {suggestedTools.map((tool) => {
@@ -922,7 +954,7 @@ function Timeline({ events }: { events: TimelineEvent[] }) {
 
 function TimelineRow({ event }: { event: TimelineEvent }) {
   const config = {
-    complete: { color: '#4ADE80', icon: <CheckCircle size={15} strokeWidth={3} />, label: 'STEP' },
+    complete: { color: '#4ADE80', icon: <CheckCircle size={15} strokeWidth={3} />, label: event.stepComplete ? 'STEP' : 'CHAIN' },
     blocked: { color: '#F87171', icon: <ShieldCheck size={15} strokeWidth={3} />, label: 'BLOCK' },
     off_path: { color: '#FACC15', icon: <AlertTriangle size={15} strokeWidth={3} />, label: 'OFF PATH' },
     already_done: { color: '#A78BFA', icon: <Sparkles size={15} strokeWidth={3} />, label: 'DONE' },
