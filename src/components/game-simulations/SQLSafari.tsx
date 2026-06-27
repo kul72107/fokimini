@@ -117,6 +117,17 @@ export default function SQLSafari({ onScoreChange }: Props) {
 
   const level = LEVELS[currentLevel - 1];
 
+  const awardLevel = useCallback((lvl: LevelId, points = 35) => {
+    if (completedLevels.has(lvl)) return;
+    setCompletedLevels((prev) => new Set(Array.from(prev).concat([lvl])));
+    setStars((s) => Math.min(3, s + 1));
+    setScore((prev) => {
+      const next = Math.min(100, prev + points);
+      onScoreChange(next);
+      return next;
+    });
+  }, [completedLevels, onScoreChange]);
+
   const resetLevel = useCallback(() => {
     setShowingResult(false);
     setMatchedRows([]);
@@ -166,11 +177,13 @@ export default function SQLSafari({ onScoreChange }: Props) {
   const runQuery = () => {
     setShowingResult(true);
     const input = userInput.toLowerCase();
+    let successfulLesson = false;
 
     if (currentLevel === 1) {
       if (input.includes("or") && input.includes("1") && input.includes("=")) {
         setMatchedRows(USERS_DB.map((u) => u.id));
         setAttackDetected(true);
+        successfulLesson = true;
       } else if (input.includes("admin")) {
         setMatchedRows([1]);
         setAttackDetected(false);
@@ -182,17 +195,21 @@ export default function SQLSafari({ onScoreChange }: Props) {
       if (input.includes("union")) {
         setMatchedRows([...USERS_DB.map((u) => u.id), 7, 8, 9]);
         setAttackDetected(true);
+        successfulLesson = true;
       } else {
         setMatchedRows([1]);
         setAttackDetected(false);
       }
     } else if (currentLevel === 3) {
       setMatchedRows([1]);
-      setAttackDetected(input.includes("substring") || input.includes("substr"));
+      successfulLesson = input.includes("substring") || input.includes("substr");
+      setAttackDetected(successfulLesson);
     } else {
       setMatchedRows([1]);
       setAttackDetected(false);
     }
+
+    if (successfulLesson) awardLevel(currentLevel);
   };
 
   const injectPayload = (payload: string) => {
@@ -207,11 +224,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
     setAttackDetected(!isCorrect);
 
     if (isCorrect) {
-      const newScore = score + 25;
-      setScore(newScore);
-      setStars((s) => Math.min(3, s + 1));
-      onScoreChange(Math.min(100, newScore));
-      setCompletedLevels((prev) => new Set(Array.from(prev).concat([currentLevel])));
+      awardLevel(currentLevel);
     }
   };
 
@@ -224,6 +237,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
     if (idx >= BINARY_QUESTIONS.length - 1) {
       setShowingResult(true);
       setMatchedRows([1]);
+      awardLevel(3);
     }
   };
 

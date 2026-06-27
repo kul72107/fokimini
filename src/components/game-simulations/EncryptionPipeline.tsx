@@ -89,12 +89,19 @@ export default function EncryptionPipeline({ onScoreChange }: EncryptionPipeline
       .split('')
       .map((c, i) => {
         const keyChar = keyStr[i % keyStr.length];
-        return String.fromCharCode(c.charCodeAt(0) ^ keyChar.charCodeAt(0));
+        return (c.charCodeAt(0) ^ keyChar.charCodeAt(0)).toString(16).padStart(2, '0').toUpperCase();
       })
-      .map((c) => {
-        const code = c.charCodeAt(0);
-        if (code >= 32 && code <= 126) return c;
-        return String.fromCharCode((code % 95) + 32);
+      .join(' ');
+  };
+
+  const xorDecrypt = (hexText: string, keyStr: string): string => {
+    if (!keyStr) return hexText;
+    return hexText
+      .trim()
+      .split(/\s+/)
+      .map((hex, i) => {
+        const keyChar = keyStr[i % keyStr.length];
+        return String.fromCharCode(parseInt(hex, 16) ^ keyChar.charCodeAt(0));
       })
       .join('');
   };
@@ -176,7 +183,7 @@ export default function EncryptionPipeline({ onScoreChange }: EncryptionPipeline
           if (encryptionType === 'caesar') {
             decrypted = caesarDecrypt(cipherText || encrypted, parseInt(key) || 3);
           } else if (encryptionType === 'xor') {
-            decrypted = xorEncrypt(encrypted, key); // XOR is symmetric
+            decrypted = xorDecrypt(encrypted, key);
           } else {
             decrypted = substitutionDecrypt(encrypted);
           }
