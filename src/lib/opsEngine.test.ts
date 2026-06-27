@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ALL_TOOLS, type BattleTarget } from './battleEngine';
 import {
@@ -73,6 +74,50 @@ describe('ordered ops simuletool chains', () => {
     });
 
     expect(starts.filter((start) => start.expected !== start.recommended)).toEqual([]);
+  });
+
+  it('renders every chain simuletool through a dedicated VS modal GUI', () => {
+    const modalSource = readFileSync(
+      new URL('../components/ops/OpsSimuleToolModal.tsx', import.meta.url),
+      'utf8',
+    );
+    const modalGameIds = new Set(
+      [...modalSource.matchAll(/case '([^']+)':/g)].map((match) => match[1]),
+    );
+    const chainToolIds = [
+      ...new Set(
+        OPS_OBJECTIVES.flatMap((objective) => (
+          objective.steps.flatMap((step) => getStepToolChainItems(step).map((item) => item.opsToolId))
+        )),
+      ),
+    ];
+
+    expect(chainToolIds.filter((toolId) => !modalGameIds.has(toolId))).toEqual([]);
+    expect(chainToolIds).not.toContain('cyber-duel-arena');
+    expect(chainToolIds).not.toContain('password-quest');
+  });
+
+  it('rejects meta or training-only games as operation progress', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    const objective = OPS_OBJECTIVES.find((item) => item.id === 'database-leak');
+    expect(objective).toBeDefined();
+    const progress = createInitialOpsProgress()[objective!.id];
+
+    for (const toolName of ['Cyber Duel Arena', 'Password Quest']) {
+      const outcome = resolveOpsAction({
+        objective: objective!,
+        progress,
+        tool: toolByName(toolName),
+        target: lowDefenseTarget,
+        isOwned: true,
+        simuleScore: 100,
+      });
+
+      expect(outcome.status).toBe('off_path');
+      expect(outcome.points).toBe(0);
+      expect(outcome.created).toEqual([]);
+    }
   });
 
   it('rejects a later chain tool until the previous segment is complete', () => {
