@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Lock, Shield, Unlock, ArrowRight, ArrowLeft, Check, X,
@@ -127,16 +127,9 @@ export default function SSLHandshake({ onScoreChange }: Props) {
     setMessage(`Level ${level.id}: ${level.name} - Click steps in the correct handshake order!`);
   }, [level]);
 
-  useState(() => {
+  useEffect(() => {
     initLevel();
-  });
-
-  // Initialize first level on mount
-  useState(() => {
-    const shuffled = [...LEVELS[0].steps.map((s) => s.id)].sort(() => Math.random() - 0.5);
-    setAvailableSteps(shuffled);
-    setMessage(`Level 1: ${LEVELS[0].name} - Click steps in the correct handshake order!`);
-  });
+  }, [initLevel]);
 
   const getStep = (id: string) => level.steps.find((s) => s.id === id)!;
 
@@ -229,14 +222,6 @@ export default function SSLHandshake({ onScoreChange }: Props) {
     setMessage(`Level 1: ${LEVELS[0].name} - Click steps in the correct handshake order!`);
     onScoreChange(0);
   };
-
-  // Show init on first render manually
-  useState(() => {
-    if (availableSteps.length === 0 && orderedSteps.length === 0 && !levelComplete) {
-      const shuffled = [...level.steps.map((s) => s.id)].sort(() => Math.random() - 0.5);
-      setAvailableSteps(shuffled);
-    }
-  });
 
   return (
     <div className="flex flex-col items-center gap-3 p-4">

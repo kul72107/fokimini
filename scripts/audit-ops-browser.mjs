@@ -595,21 +595,121 @@ async function main() {
     `, 12000);
     console.error('[audit] Database Leak objective completed through ordered GUI chain');
 
+    await clickByText('Admin Panel Access');
+    await waitFor('Admin Panel Access selected', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Admin Panel Access') &&
+          text.includes('Profile likely admin identity') &&
+          text.toUpperCase().includes('WHOIS LOOKUP');
+      })()
+    `, 12000);
+    console.error('[audit] Admin Panel Access selected');
+
+    const openedWhois = await openQueuedTool('Whois Lookup');
+    await waitFor('WHOIS Lookup modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickByText('Correlate timestamps before taking the next action', true);
+    await clickByText('cyberpaws.kids');
+    await waitFor('WHOIS first lookup', `Boolean(document.body?.innerText.includes('CyberPaws Academy') && document.body?.innerText.includes('Lookups: 1'))`, 12000);
+    await clickByText('google.com');
+    await waitFor('WHOIS score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Google LLC') &&
+          text.includes('Score: 40') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const whoisState = await readModalState(openedWhois);
+    await assertSubmittable(whoisState, 'WHOIS Lookup');
+    await submitStep();
+    await waitFor('Admin Panel Access step 1 completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 1/14') &&
+          text.includes('STEPS 5/44') &&
+          text.includes('Admin Panel Access 1/3') &&
+          text.includes('Test credential path') &&
+          text.toUpperCase().includes('HASH CRACKER GUI');
+      })()
+    `, 12000);
+    console.error('[audit] Admin Panel Access step 1 completed through WHOIS GUI');
+
+    const openedHash = await openQueuedTool('Hash Cracker');
+    await waitFor('Hash Cracker modal', `Boolean(document.body?.innerText.includes('Hash Cracker') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickByText('Reduce suspicious behavior and isolate the lab process', true);
+    await clickByText('Correlate timestamps before taking the next action', true);
+    await clickByText('Easy Start');
+    await waitFor('Hash challenge loaded', `Boolean(document.body?.innerText.includes('5f4dcc3b5aa765d61d8327deb882cf99') && document.body?.innerText.includes('START CRACKING'))`);
+    await clickByText('START CRACKING');
+    await waitFor('Hash Cracker score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Password:') &&
+          text.includes('password') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 20000);
+    const hashState = await readModalState(openedHash);
+    await assertSubmittable(hashState, 'Hash Cracker');
+    await submitStep();
+    await waitFor('Admin Panel Access step 2 completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 1/14') &&
+          text.includes('STEPS 6/44') &&
+          text.includes('Admin Panel Access 2/3') &&
+          text.includes('Stabilize the session') &&
+          text.toUpperCase().includes('SSL HANDSHAKE');
+      })()
+    `, 12000);
+    console.error('[audit] Admin Panel Access step 2 completed through Hash Cracker GUI');
+
+    const openedSsl = await openQueuedTool('SSL Handshake');
+    await waitFor('SSL Handshake modal', `Boolean(document.body?.innerText.includes('SSL Handshake') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickByText('Pick the smallest scoped fix path before retrying', true);
+    await clickByText('Correlate timestamps before taking the next action', true);
+    await clickByText('Client Hello');
+    await clickByText('Server Hello');
+    await clickByText('Key Exchange');
+    await clickByText('Finished');
+    await waitFor('SSL Handshake score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Level 1 Complete!') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const sslState = await readModalState(openedSsl);
+    await assertSubmittable(sslState, 'SSL Handshake');
+    await submitStep();
+    await waitFor('Admin Panel Access objective completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 2/14') &&
+          text.includes('STEPS 7/44') &&
+          text.includes('Admin Panel Access 3/3');
+      })()
+    `, 12000);
+    console.error('[audit] Admin Panel Access objective completed through ordered GUI chain');
+
     const summary = await evaluate(`
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return {
           url: location.href,
           feedHasChain: text.includes('completed chain segment 1/2'),
-          completedFirstStep: text.includes('STEPS 4/44') && text.includes('Database Leak 4/4'),
-          completedObjective: text.includes('OBJECTIVES 1/14'),
-          nextStepVisible: text.includes('Database proof captured') || text.includes('Database Leak 4/4'),
-          nextSegmentVisible: /ENCRYPTION PIPELINE/i.test(text),
+          completedDatabaseLeak: text.includes('Database Leak 4/4'),
+          completedAdminPanel: text.includes('Admin Panel Access 3/3'),
+          completedObjectives: text.includes('OBJECTIVES 2/14'),
+          completedSteps: text.includes('STEPS 7/44'),
+          nextStepVisible: text.includes('Admin session stabilized') || text.includes('Admin Panel Access 3/3'),
+          nextSegmentVisible: /SSL HANDSHAKE/i.test(text),
           queueVisible: text.includes('Simuletool Queue')
         };
       })()
     `);
-    if (!summary.feedHasChain || !summary.completedFirstStep || !summary.completedObjective || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
+    if (!summary.feedHasChain || !summary.completedDatabaseLeak || !summary.completedAdminPanel || !summary.completedObjectives || !summary.completedSteps || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
       const snapshot = await pageSnapshot(evaluate);
       throw new Error(`Completed VS step summary was incomplete: ${JSON.stringify(summary)}\n${snapshot}`);
     }
@@ -626,6 +726,12 @@ async function main() {
       sqlInjectorState,
       openedEncryption,
       encryptionState,
+      openedWhois,
+      whoisState,
+      openedHash,
+      hashState,
+      openedSsl,
+      sslState,
       summary,
     }, null, 2));
   } catch (error) {
@@ -650,7 +756,10 @@ async function pageSnapshot(evaluate) {
         fullText.indexOf('DNS Lookup Tool'),
         fullText.indexOf('SQL Safari'),
         fullText.indexOf('SQL Injector'),
-        fullText.indexOf('Encryption Pipeline')
+        fullText.indexOf('Encryption Pipeline'),
+        fullText.indexOf('WHOIS Lookup'),
+        fullText.indexOf('Hash Cracker'),
+        fullText.indexOf('SSL Handshake')
       );
       const modalText = modalIndex >= 0 ? fullText.slice(modalIndex, modalIndex + 1600) : '';
       const bodyText = fullText.slice(0, 1800);
