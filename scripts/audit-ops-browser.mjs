@@ -404,6 +404,30 @@ async function main() {
       }
     }
 
+    async function fillModalField(placeholder, value, fieldTag = 'input') {
+      const filled = await evaluate(`
+        (() => {
+          const placeholder = ${JSON.stringify(placeholder)};
+          const value = ${JSON.stringify(value)};
+          const fieldTag = ${JSON.stringify(fieldTag)};
+          const fields = [...document.querySelectorAll('.fixed ' + fieldTag)];
+          const field = fields.find((candidate) => candidate.placeholder === placeholder);
+          if (!field) return false;
+          field.scrollIntoView({ block: 'center', inline: 'center' });
+          const proto = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+          setter?.call(field, value);
+          field.dispatchEvent(new Event('input', { bubbles: true }));
+          field.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        })()
+      `);
+      if (!filled) {
+        const snapshot = await pageSnapshot(evaluate);
+        throw new Error(`Could not fill modal field "${placeholder}".\n${snapshot}`);
+      }
+    }
+
     async function clickVirtualKeys(keys) {
       for (const key of keys) {
         const clicked = await evaluate(`
@@ -1022,6 +1046,127 @@ async function main() {
     `, 12000);
     console.error('[audit] Web Malware Implant objective completed through ordered GUI chain');
 
+    await clickByText('Keylogger Telemetry');
+    await waitFor('Keylogger Telemetry selected', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Keylogger Telemetry') &&
+          text.includes('Deliver lab payload') &&
+          text.toUpperCase().includes('PHISHING SIM GUI');
+      })()
+    `, 12000);
+    console.error('[audit] Keylogger Telemetry selected');
+
+    const openedDeliveryPhish = await openQueuedTool('Phishing Sim');
+    await waitFor('Phishing Simulator modal', `Boolean(document.body?.innerText.includes('Phishing Simulator') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
+    await clickModalText('Correlate timestamps before taking the next action', true);
+    await fillModalField('bank@secure.com', 'security@audit-bank.example');
+    await fillModalField('URGENT: Action required!', 'Quarterly account verification');
+    await fillModalField('Write your email body...', 'Please verify the account workflow in this training lab before the simulated review window closes.', 'textarea');
+    await clickModalText('Urgency OFF');
+    await clickModalText('Spoof OFF');
+    await clickModalText('Preview & Score');
+    await waitFor('Phishing builder score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Convincing Score: 50/50') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    await clickModalText('bank@secure-login.com');
+    await clickModalText('Phishing', true);
+    await waitFor('Phishing classifier correct', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('CORRECT!') &&
+          text.includes('This is a phishing email') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const deliveryPhishState = await readModalState(openedDeliveryPhish);
+    await assertSubmittable(deliveryPhishState, 'Phishing Sim');
+    await submitStep();
+    await waitFor('Keylogger Telemetry step 1 completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 4/14') &&
+          text.includes('STEPS 14/44') &&
+          text.includes('Keylogger Telemetry 1/3') &&
+          text.includes('Establish endpoint view') &&
+          text.toUpperCase().includes('TROJAN BUILDER');
+      })()
+    `, 12000);
+    console.error('[audit] Keylogger Telemetry step 1 completed through Phishing Sim GUI');
+
+    const openedEndpointTrojan = await openQueuedTool('Trojan Builder');
+    await waitFor('Endpoint Trojan modal', `Boolean(document.body?.innerText.includes('Trojan Builder') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
+    await clickModalText('Pick the smallest scoped fix path before retrying', true);
+    await clickModalText('Office Macro');
+    await clickTrojanPaletteTab(1);
+    await clickModalText('Screen Capture');
+    await clickTrojanPaletteTab(2);
+    await clickModalText('Registry Key');
+    await clickTrojanPaletteTab(3);
+    await clickModalText('HTTPS Beacon');
+    await waitFor('Endpoint Trojan assembly ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('All component types assembled!') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    await clickModalText('Test Against Defenses');
+    await waitFor('Endpoint Trojan test lab ready', `Boolean(document.body?.innerText.includes('Defense Testing Lab') && document.body?.innerText.includes('Run Test'))`);
+    await clickModalText('Run Test');
+    await waitFor('Endpoint Trojan test result', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return (text.includes('Detected by:') || text.includes('Trojan evaded all defenses!')) &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const endpointTrojanState = await readModalState(openedEndpointTrojan);
+    await assertSubmittable(endpointTrojanState, 'Endpoint Trojan');
+    await submitStep();
+    await waitFor('Keylogger Telemetry step 2 completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 4/14') &&
+          text.includes('STEPS 15/44') &&
+          text.includes('Keylogger Telemetry 2/3') &&
+          text.includes('Collect simulated telemetry') &&
+          text.toUpperCase().includes('KEYLOGGER SIM');
+      })()
+    `, 12000);
+    console.error('[audit] Keylogger Telemetry step 2 completed through Trojan Builder GUI');
+
+    const openedTelemetryKeylogger = await openQueuedTool('Keylogger Sim');
+    await waitFor('Telemetry Keylogger modal', `Boolean(document.body?.innerText.includes('Keylogger Sim') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
+    await clickModalText('Correlate timestamps before taking the next action', true);
+    await clickVirtualKeys(['A', 'U', 'D', 'I', 'T', 'S', 'E', 'C', 'U', 'R']);
+    await waitFor('Telemetry Keylogger score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Keys Captured') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const telemetryKeyloggerState = await readModalState(openedTelemetryKeylogger);
+    await assertSubmittable(telemetryKeyloggerState, 'Telemetry Keylogger');
+    await submitStep();
+    await waitFor('Keylogger Telemetry objective completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 5/14') &&
+          text.includes('STEPS 16/44') &&
+          text.includes('Keylogger Telemetry 3/3');
+      })()
+    `, 12000);
+    console.error('[audit] Keylogger Telemetry objective completed through ordered GUI chain');
+
     const summary = await evaluate(`
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
@@ -1032,15 +1177,16 @@ async function main() {
           completedAdminPanel: text.includes('Admin Panel Access 3/3'),
           completedSessionHijack: text.includes('Session Hijack Sim 3/3'),
           completedWebMalware: text.includes('Web Malware Implant 3/3'),
-          completedObjectives: text.includes('OBJECTIVES 4/14'),
-          completedSteps: text.includes('STEPS 13/44'),
-          nextStepVisible: text.includes('Web payload staged') || text.includes('Web Malware Implant 3/3'),
-          nextSegmentVisible: /TROJAN BUILDER/i.test(text),
+          completedKeyloggerTelemetry: text.includes('Keylogger Telemetry 3/3'),
+          completedObjectives: text.includes('OBJECTIVES 5/14'),
+          completedSteps: text.includes('STEPS 16/44'),
+          nextStepVisible: text.includes('Telemetry captured') || text.includes('Keylogger Telemetry 3/3'),
+          nextSegmentVisible: /KEYLOGGER SIM/i.test(text),
           queueVisible: text.includes('Simuletool Queue')
         };
       })()
     `);
-    if (!summary.feedHasChain || !summary.completedDatabaseLeak || !summary.completedAdminPanel || !summary.completedSessionHijack || !summary.completedWebMalware || !summary.completedObjectives || !summary.completedSteps || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
+    if (!summary.feedHasChain || !summary.completedDatabaseLeak || !summary.completedAdminPanel || !summary.completedSessionHijack || !summary.completedWebMalware || !summary.completedKeyloggerTelemetry || !summary.completedObjectives || !summary.completedSteps || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
       const snapshot = await pageSnapshot(evaluate);
       throw new Error(`Completed VS step summary was incomplete: ${JSON.stringify(summary)}\n${snapshot}`);
     }
@@ -1077,6 +1223,12 @@ async function main() {
       xssTesterState,
       openedTrojan,
       trojanState,
+      openedDeliveryPhish,
+      deliveryPhishState,
+      openedEndpointTrojan,
+      endpointTrojanState,
+      openedTelemetryKeylogger,
+      telemetryKeyloggerState,
       summary,
     }, null, 2));
   } catch (error) {
@@ -1110,6 +1262,7 @@ async function pageSnapshot(evaluate) {
         fullText.indexOf('Keylogger Sim'),
         fullText.indexOf('Proxy Server Simulator'),
         fullText.indexOf('XSS Tester'),
+        fullText.indexOf('Phishing Simulator'),
         fullText.indexOf('Trojan Builder')
       );
       const modalText = modalIndex >= 0 ? fullText.slice(modalIndex, modalIndex + 1600) : '';
