@@ -1288,6 +1288,181 @@ async function main() {
     `, 12000);
     console.error('[audit] Cookie Capture objective completed through ordered GUI chain');
 
+    await clickByText('API Key Theft');
+    await waitFor('API Key Theft selected', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('API Key Theft') &&
+          text.includes('Map code/config surface') &&
+          text.toUpperCase().includes('WHOIS LOOKUP');
+      })()
+    `, 12000);
+    console.error('[audit] API Key Theft selected');
+
+    const openedApiWhois = await openQueuedTool('Whois Lookup');
+    await waitFor('API WHOIS Lookup modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Correlate timestamps before taking the next action', true);
+    await clickModalText('cyberpaws.kids');
+    await waitFor('API WHOIS first lookup', `Boolean(document.body?.innerText.includes('CyberPaws Academy') && document.body?.innerText.includes('Lookups: 1'))`, 12000);
+    await clickModalText('google.com');
+    await waitFor('API WHOIS score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Google LLC') &&
+          text.includes('Score: 40') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const apiWhoisState = await readModalState(openedApiWhois);
+    await assertSubmittable(apiWhoisState, 'API WHOIS Lookup', 'Commit Segment');
+    await submitStep();
+    await waitFor('API Key Theft first chain segment completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 6/14') &&
+          text.includes('STEPS 19/44') &&
+          text.includes('completed chain segment 1/2') &&
+          text.toUpperCase().includes('DNS LOOKUP GUI');
+      })()
+    `, 12000);
+    console.error('[audit] API Key Theft WHOIS segment committed');
+
+    const openedApiDns = await openQueuedTool('DNS Lookup GUI');
+    await waitFor('API DNS lookup modal', `Boolean(document.body?.innerText.includes('DNS Lookup Tool') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Correlate timestamps before taking the next action', true);
+    await clickModalText('cyberpaws.kids');
+    for (let i = 1; i <= 4; i++) {
+      await clickModalText('Trace Path');
+      await waitFor(`API DNS trace ${i}/4 complete`, `
+        (() => {
+          const text = document.body.innerText.replace(/\\s+/g, ' ');
+          return text.includes('Lookups: ${i}') &&
+            text.includes('DNS Records for cyberpaws.kids');
+        })()
+      `, 12000);
+    }
+    await waitFor('API DNS score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Score: 60') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const apiDnsState = await readModalState(openedApiDns);
+    await assertSubmittable(apiDnsState, 'API DNS Lookup');
+    await submitStep();
+    await waitFor('API Key Theft step 1 completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 6/14') &&
+          text.includes('STEPS 20/44') &&
+          text.includes('API Key Theft 1/3') &&
+          text.includes('Find secret pattern') &&
+          text.toUpperCase().includes('XOR TOOL');
+      })()
+    `, 12000);
+    console.error('[audit] API Key Theft step 1 completed through WHOIS + DNS GUI chain');
+
+    const openedXorTool = await openQueuedTool('XOR Tool');
+    await waitFor('XOR Tool modal', `Boolean(document.body?.innerText.includes('XOR Tool') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Pick the smallest scoped fix path before retrying', true);
+    for (let i = 0; i < 4; i++) {
+      await clickModalText('Run XOR Operation');
+      await sleep(80);
+    }
+    await waitFor('XOR Tool score ready', `Boolean(document.body?.innerText.includes('Operation run is strong enough'))`, 12000);
+    const xorToolState = await readModalState(openedXorTool);
+    await assertSubmittable(xorToolState, 'XOR Tool', 'Commit Segment');
+    await submitStep();
+    await waitFor('API Key Theft XOR segment completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 6/14') &&
+          text.includes('STEPS 20/44') &&
+          text.includes('completed chain segment 1/2') &&
+          text.toUpperCase().includes('HASH CRACKER GUI');
+      })()
+    `, 12000);
+    console.error('[audit] API Key Theft XOR segment committed');
+
+    const openedApiHash = await openQueuedTool('Hash Cracker');
+    await waitFor('API Hash Cracker modal', `Boolean(document.body?.innerText.includes('Hash Cracker') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Pick the smallest scoped fix path before retrying', true);
+    await clickModalText('Easy Start');
+    await waitFor('API Hash challenge loaded', `Boolean(document.body?.innerText.includes('5f4dcc3b5aa765d61d8327deb882cf99') && document.body?.innerText.includes('START CRACKING'))`);
+    await clickModalText('START CRACKING');
+    await waitFor('API Hash Cracker score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Password:') &&
+          text.includes('password') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 20000);
+    const apiHashState = await readModalState(openedApiHash);
+    await assertSubmittable(apiHashState, 'API Hash Cracker');
+    await submitStep();
+    await waitFor('API Key Theft step 2 completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 6/14') &&
+          text.includes('STEPS 21/44') &&
+          text.includes('API Key Theft 2/3') &&
+          text.includes('Validate revoked key proof') &&
+          text.toUpperCase().includes('PROXY SERVER');
+      })()
+    `, 12000);
+    console.error('[audit] API Key Theft step 2 completed through XOR + Hash GUI chain');
+
+    const openedApiProxy = await openQueuedTool('Proxy Server');
+    await waitFor('API Proxy Server modal', `Boolean(document.body?.innerText.includes('Proxy Server Simulator') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Correlate timestamps before taking the next action', true);
+    await clickModalText('Pick the smallest scoped fix path before retrying', true);
+    await clickModalText('Start Simulation');
+    await waitFor('API Proxy game ready', `Boolean(document.body?.innerText.includes('Forward Proxy Mode') && document.body?.innerText.includes('Click a website to request'))`);
+    await clickModalText('Google');
+    await waitFor('API Proxy first request complete', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Score: 10') && text.includes('Cache MISS');
+      })()
+    `, 12000);
+    await clickModalText('Google');
+    await waitFor('API Proxy cached request complete', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Score: 25') && text.includes('Cache HIT');
+      })()
+    `, 12000);
+    await clickModalText('YouTube');
+    await waitFor('API Proxy third request complete', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Score: 35') && text.includes('Cache MISS');
+      })()
+    `, 12000);
+    await clickModalText('YouTube');
+    await waitFor('API Proxy score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Score: 50') &&
+          text.includes('Cache HIT') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const apiProxyState = await readModalState(openedApiProxy);
+    await assertSubmittable(apiProxyState, 'API Proxy Server');
+    await submitStep();
+    await waitFor('API Key Theft objective completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 7/14') &&
+          text.includes('STEPS 22/44') &&
+          text.includes('API Key Theft 3/3');
+      })()
+    `, 12000);
+    console.error('[audit] API Key Theft objective completed through ordered GUI chain');
+
     const summary = await evaluate(`
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
@@ -1300,15 +1475,16 @@ async function main() {
           completedWebMalware: text.includes('Web Malware Implant 3/3'),
           completedKeyloggerTelemetry: text.includes('Keylogger Telemetry 3/3'),
           completedCookieCapture: text.includes('Cookie Capture 3/3'),
-          completedObjectives: text.includes('OBJECTIVES 6/14'),
-          completedSteps: text.includes('STEPS 19/44'),
-          nextStepVisible: text.includes('Cookie proof captured') || text.includes('Cookie Capture 3/3'),
-          nextSegmentVisible: /ENCRYPTION PIPELINE/i.test(text),
+          completedApiKeyTheft: text.includes('API Key Theft 3/3'),
+          completedObjectives: text.includes('OBJECTIVES 7/14'),
+          completedSteps: text.includes('STEPS 22/44'),
+          nextStepVisible: text.includes('API key proof captured') || text.includes('API Key Theft 3/3'),
+          nextSegmentVisible: /PROXY SERVER/i.test(text),
           queueVisible: text.includes('Simuletool Queue')
         };
       })()
     `);
-    if (!summary.feedHasChain || !summary.completedDatabaseLeak || !summary.completedAdminPanel || !summary.completedSessionHijack || !summary.completedWebMalware || !summary.completedKeyloggerTelemetry || !summary.completedCookieCapture || !summary.completedObjectives || !summary.completedSteps || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
+    if (!summary.feedHasChain || !summary.completedDatabaseLeak || !summary.completedAdminPanel || !summary.completedSessionHijack || !summary.completedWebMalware || !summary.completedKeyloggerTelemetry || !summary.completedCookieCapture || !summary.completedApiKeyTheft || !summary.completedObjectives || !summary.completedSteps || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
       const snapshot = await pageSnapshot(evaluate);
       throw new Error(`Completed VS step summary was incomplete: ${JSON.stringify(summary)}\n${snapshot}`);
     }
@@ -1357,6 +1533,16 @@ async function main() {
       logAnalyzerState,
       openedCookieEncryption,
       cookieEncryptionState,
+      openedApiWhois,
+      apiWhoisState,
+      openedApiDns,
+      apiDnsState,
+      openedXorTool,
+      xorToolState,
+      openedApiHash,
+      apiHashState,
+      openedApiProxy,
+      apiProxyState,
       summary,
     }, null, 2));
   } catch (error) {
@@ -1392,6 +1578,7 @@ async function pageSnapshot(evaluate) {
         fullText.indexOf('XSS Tester'),
         fullText.indexOf('Phishing Simulator'),
         fullText.indexOf('Log Analyzer'),
+        fullText.indexOf('XOR Tool'),
         fullText.indexOf('Trojan Builder')
       );
       const modalText = modalIndex >= 0 ? fullText.slice(modalIndex, modalIndex + 1600) : '';
