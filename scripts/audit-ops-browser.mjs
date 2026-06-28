@@ -1167,6 +1167,127 @@ async function main() {
     `, 12000);
     console.error('[audit] Keylogger Telemetry objective completed through ordered GUI chain');
 
+    await clickByText('Cookie Capture');
+    await waitFor('Cookie Capture selected', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Cookie Capture') &&
+          text.includes('Gain local context') &&
+          text.toUpperCase().includes('TROJAN BUILDER');
+      })()
+    `, 12000);
+    console.error('[audit] Cookie Capture selected');
+
+    const openedLocalTrojan = await openQueuedTool('Trojan Builder');
+    await waitFor('Local Trojan modal', `Boolean(document.body?.innerText.includes('Trojan Builder') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
+    await clickModalText('Office Macro');
+    await clickTrojanPaletteTab(1);
+    await clickModalText('Screen Capture');
+    await clickTrojanPaletteTab(2);
+    await clickModalText('Registry Key');
+    await clickTrojanPaletteTab(3);
+    await clickModalText('HTTPS Beacon');
+    await waitFor('Local Trojan assembly ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('All component types assembled!') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    await clickModalText('Test Against Defenses');
+    await waitFor('Local Trojan test lab ready', `Boolean(document.body?.innerText.includes('Defense Testing Lab') && document.body?.innerText.includes('Run Test'))`);
+    await clickModalText('Run Test');
+    await waitFor('Local Trojan test result', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return (text.includes('Detected by:') || text.includes('Trojan evaded all defenses!')) &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const localTrojanState = await readModalState(openedLocalTrojan);
+    await assertSubmittable(localTrojanState, 'Local Trojan');
+    await submitStep();
+    await waitFor('Cookie Capture step 1 completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 5/14') &&
+          text.includes('STEPS 17/44') &&
+          text.includes('Cookie Capture 1/3') &&
+          text.includes('Locate browser store') &&
+          text.toUpperCase().includes('LOG ANALYZER');
+      })()
+    `, 12000);
+    console.error('[audit] Cookie Capture step 1 completed through Trojan Builder GUI');
+
+    const openedLogAnalyzer = await openQueuedTool('Log Analyzer');
+    await waitFor('Log Analyzer modal', `Boolean(document.body?.innerText.includes('Log Analyzer') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
+    await clickModalText('Pick the smallest scoped fix path before retrying', true);
+    await clickModalText('The Brute');
+    await waitFor('Log Analyzer case ready', `Boolean(document.body?.innerText.includes('Case 1: The Brute') && document.body?.innerText.includes('Solve the Case'))`, 12000);
+    await clickModalText('Auto-Flag Pattern');
+    await waitFor('Log Analyzer pattern flagged', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Clues: 19/19') &&
+          text.includes('Progress: 100%');
+      })()
+    `, 12000);
+    await clickModalText('Brute Force Attack');
+    await clickModalText('Solve Case');
+    await waitFor('Log Analyzer solved', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Case Solved!') &&
+          text.includes('A brute force attack happens') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const logAnalyzerState = await readModalState(openedLogAnalyzer);
+    await assertSubmittable(logAnalyzerState, 'Log Analyzer');
+    await submitStep();
+    await waitFor('Cookie Capture step 2 completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 5/14') &&
+          text.includes('STEPS 18/44') &&
+          text.includes('Cookie Capture 2/3') &&
+          text.includes('Extract cookie proof') &&
+          text.toUpperCase().includes('ENCRYPTION PIPELINE');
+      })()
+    `, 12000);
+    console.error('[audit] Cookie Capture step 2 completed through Log Analyzer GUI');
+
+    const openedCookieEncryption = await openQueuedTool('Encryption Pipeline');
+    await waitFor('Cookie Encryption Pipeline modal', `Boolean(document.body?.innerText.includes('Encryption Pipeline') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Correlate timestamps before taking the next action', true);
+    await clickModalText('Pick the smallest scoped fix path before retrying', true);
+    await clickModalText('Start Pipeline');
+    await waitFor('Cookie Encryption game ready', `Boolean(document.body?.innerText.includes('Level 1: Caesar Cipher'))`);
+    await clickModalText('HELLO', true);
+    await fillFirstVisibleInput('3', 'number');
+    await clickModalText('Encrypt & Decrypt');
+    await waitFor('Cookie Encryption level 1 output', `Boolean(document.body?.innerText.includes('Success! Decrypted correctly') && document.body?.innerText.includes('Next Level'))`, 12000);
+    await clickModalText('Next Level');
+    await waitFor('Cookie Encryption level 2 ready', `Boolean(document.body?.innerText.includes('Level 2: XOR Encryption'))`);
+    await clickModalText('CYBER', true);
+    await fillFirstVisibleInput('SECRET', 'text');
+    await clickModalText('Encrypt & Decrypt');
+    await waitFor('Cookie Encryption score ready', `Boolean(document.body?.innerText.includes('Score: 40') && document.body?.innerText.includes('Operation run is strong enough'))`, 12000);
+    const cookieEncryptionState = await readModalState(openedCookieEncryption);
+    await assertSubmittable(cookieEncryptionState, 'Cookie Encryption Pipeline');
+    await submitStep();
+    await waitFor('Cookie Capture objective completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 6/14') &&
+          text.includes('STEPS 19/44') &&
+          text.includes('Cookie Capture 3/3');
+      })()
+    `, 12000);
+    console.error('[audit] Cookie Capture objective completed through ordered GUI chain');
+
     const summary = await evaluate(`
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
@@ -1178,15 +1299,16 @@ async function main() {
           completedSessionHijack: text.includes('Session Hijack Sim 3/3'),
           completedWebMalware: text.includes('Web Malware Implant 3/3'),
           completedKeyloggerTelemetry: text.includes('Keylogger Telemetry 3/3'),
-          completedObjectives: text.includes('OBJECTIVES 5/14'),
-          completedSteps: text.includes('STEPS 16/44'),
-          nextStepVisible: text.includes('Telemetry captured') || text.includes('Keylogger Telemetry 3/3'),
-          nextSegmentVisible: /KEYLOGGER SIM/i.test(text),
+          completedCookieCapture: text.includes('Cookie Capture 3/3'),
+          completedObjectives: text.includes('OBJECTIVES 6/14'),
+          completedSteps: text.includes('STEPS 19/44'),
+          nextStepVisible: text.includes('Cookie proof captured') || text.includes('Cookie Capture 3/3'),
+          nextSegmentVisible: /ENCRYPTION PIPELINE/i.test(text),
           queueVisible: text.includes('Simuletool Queue')
         };
       })()
     `);
-    if (!summary.feedHasChain || !summary.completedDatabaseLeak || !summary.completedAdminPanel || !summary.completedSessionHijack || !summary.completedWebMalware || !summary.completedKeyloggerTelemetry || !summary.completedObjectives || !summary.completedSteps || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
+    if (!summary.feedHasChain || !summary.completedDatabaseLeak || !summary.completedAdminPanel || !summary.completedSessionHijack || !summary.completedWebMalware || !summary.completedKeyloggerTelemetry || !summary.completedCookieCapture || !summary.completedObjectives || !summary.completedSteps || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
       const snapshot = await pageSnapshot(evaluate);
       throw new Error(`Completed VS step summary was incomplete: ${JSON.stringify(summary)}\n${snapshot}`);
     }
@@ -1229,6 +1351,12 @@ async function main() {
       endpointTrojanState,
       openedTelemetryKeylogger,
       telemetryKeyloggerState,
+      openedLocalTrojan,
+      localTrojanState,
+      openedLogAnalyzer,
+      logAnalyzerState,
+      openedCookieEncryption,
+      cookieEncryptionState,
       summary,
     }, null, 2));
   } catch (error) {
@@ -1263,6 +1391,7 @@ async function pageSnapshot(evaluate) {
         fullText.indexOf('Proxy Server Simulator'),
         fullText.indexOf('XSS Tester'),
         fullText.indexOf('Phishing Simulator'),
+        fullText.indexOf('Log Analyzer'),
         fullText.indexOf('Trojan Builder')
       );
       const modalText = modalIndex >= 0 ? fullText.slice(modalIndex, modalIndex + 1600) : '';
