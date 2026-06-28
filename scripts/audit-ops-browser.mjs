@@ -328,7 +328,7 @@ async function main() {
     async function submitStep() {
       await evaluate(`
         (() => {
-          const button = [...document.querySelectorAll('button')].find((item) => /Complete VS Step/.test(item.innerText));
+          const button = [...document.querySelectorAll('button')].find((item) => /Commit Segment|Complete VS Step/.test(item.innerText));
           button?.click();
           return true;
         })()
@@ -358,6 +358,33 @@ async function main() {
       if (!filled) {
         const snapshot = await pageSnapshot(evaluate);
         throw new Error(`Could not fill visible input with "${value}".\n${snapshot}`);
+      }
+    }
+
+    async function clickVirtualKeys(keys) {
+      for (const key of keys) {
+        const clicked = await evaluate(`
+          (() => {
+            const expected = ${JSON.stringify(key)};
+            const buttons = [...document.querySelectorAll('button')].filter((button) => {
+              const label = (button.innerText || button.textContent || '').replace(/\\s+/g, ' ').trim();
+              return label === expected && Boolean(button.closest('.fixed'));
+            });
+            const button = buttons.find((candidate) => {
+              const rect = candidate.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            });
+            if (!button) return false;
+            button.scrollIntoView({ block: 'center', inline: 'center' });
+            button.click();
+            return true;
+          })()
+        `);
+        if (!clicked) {
+          const snapshot = await pageSnapshot(evaluate);
+          throw new Error(`Could not click virtual key "${key}".\n${snapshot}`);
+        }
+        await sleep(80);
       }
     }
 
@@ -693,6 +720,146 @@ async function main() {
     `, 12000);
     console.error('[audit] Admin Panel Access objective completed through ordered GUI chain');
 
+    await clickByText('Session Hijack Sim');
+    await waitFor('Session Hijack Sim selected', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Session Hijack Sim') &&
+          text.includes('Observe session traffic path') &&
+          text.toUpperCase().includes('NETWORK PACKET TRACER');
+      })()
+    `, 12000);
+    console.error('[audit] Session Hijack Sim selected');
+
+    const openedPacketTracer = await openQueuedTool('Network Packet Tracer');
+    await waitFor('Packet Sniffer modal', `Boolean(document.body?.innerText.includes('Packet Sniffer') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickByText('Verify issuer, host, expiry, and fingerprint', true);
+    await clickByText('Correlate timestamps before taking the next action', true);
+    await clickByText('START CAPTURE');
+    await waitFor('Packet Sniffer segment ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Operation run is strong enough') &&
+          /Total Score\\s+(4[5-9]|[5-9][0-9]|100)/.test(text);
+      })()
+    `, 20000);
+    const packetTracerState = await readModalState(openedPacketTracer);
+    await assertSubmittable(packetTracerState, 'Network Packet Tracer', 'Commit Segment');
+    await submitStep();
+    await waitFor('Session Hijack path segment committed', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('completed chain segment 1/2') &&
+          text.toUpperCase().includes('CERT VIEWER GUI');
+      })()
+    `, 12000);
+    console.error('[audit] Session Hijack first chain segment committed through Packet Sniffer GUI');
+
+    const openedCertViewer = await openQueuedTool('Cert Viewer');
+    await waitFor('Cert Viewer modal', `Boolean(document.body?.innerText.includes('Cert Viewer') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickByText('Verify issuer, host, expiry, and fingerprint', true);
+    await clickByText('Correlate timestamps before taking the next action', true);
+    await clickByText('old-site.example', true);
+    await clickByText('INSPECT');
+    await waitFor('Cert Viewer score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('old-site.example') &&
+          text.includes('Issues Found:') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const certViewerState = await readModalState(openedCertViewer);
+    await assertSubmittable(certViewerState, 'Cert Viewer');
+    await submitStep();
+    await waitFor('Session Hijack step 1 completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 2/14') &&
+          text.includes('STEPS 8/44') &&
+          text.includes('Session Hijack Sim 1/3') &&
+          text.includes('Capture session artifact') &&
+          text.toUpperCase().includes('KEYLOGGER SIM');
+      })()
+    `, 12000);
+    console.error('[audit] Session Hijack step 1 completed through Cert Viewer GUI');
+
+    const openedKeylogger = await openQueuedTool('Keylogger Sim');
+    await waitFor('Keylogger Sim modal', `Boolean(document.body?.innerText.includes('Keylogger Sim') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickByText('Reduce suspicious behavior and isolate the lab process', true);
+    await clickByText('Pick the smallest scoped fix path before retrying', true);
+    await clickVirtualKeys(['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P']);
+    await waitFor('Keylogger Sim score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Keys Captured') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const keyloggerState = await readModalState(openedKeylogger);
+    await assertSubmittable(keyloggerState, 'Keylogger Sim');
+    await submitStep();
+    await waitFor('Session Hijack step 2 completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 2/14') &&
+          text.includes('STEPS 9/44') &&
+          text.includes('Session Hijack Sim 2/3') &&
+          text.includes('Replay in lab browser') &&
+          text.toUpperCase().includes('PROXY SERVER');
+      })()
+    `, 12000);
+    console.error('[audit] Session Hijack step 2 completed through Keylogger Sim GUI');
+
+    const openedProxy = await openQueuedTool('Proxy Server');
+    await waitFor('Proxy Server modal', `Boolean(document.body?.innerText.includes('Proxy Server Simulator') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickByText('Correlate timestamps before taking the next action', true);
+    await clickByText('Pick the smallest scoped fix path before retrying', true);
+    await clickByText('Start Simulation');
+    await waitFor('Proxy game ready', `Boolean(document.body?.innerText.includes('Forward Proxy Mode') && document.body?.innerText.includes('Click a website to request'))`);
+    await clickByText('Google');
+    await waitFor('Proxy first request complete', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Score: 10') && text.includes('Cache MISS');
+      })()
+    `, 12000);
+    await clickByText('Google');
+    await waitFor('Proxy cached request complete', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Score: 25') && text.includes('Cache HIT');
+      })()
+    `, 12000);
+    await clickByText('YouTube');
+    await waitFor('Proxy third request complete', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Score: 35') && text.includes('Cache MISS');
+      })()
+    `, 12000);
+    await clickByText('YouTube');
+    await waitFor('Proxy score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Score: 50') &&
+          text.includes('Cache HIT') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const proxyState = await readModalState(openedProxy);
+    await assertSubmittable(proxyState, 'Proxy Server');
+    await submitStep();
+    await waitFor('Session Hijack objective completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 3/14') &&
+          text.includes('STEPS 10/44') &&
+          text.includes('Session Hijack Sim 3/3');
+      })()
+    `, 12000);
+    console.error('[audit] Session Hijack Sim objective completed through ordered GUI chain');
+
     const summary = await evaluate(`
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
@@ -701,15 +868,16 @@ async function main() {
           feedHasChain: text.includes('completed chain segment 1/2'),
           completedDatabaseLeak: text.includes('Database Leak 4/4'),
           completedAdminPanel: text.includes('Admin Panel Access 3/3'),
-          completedObjectives: text.includes('OBJECTIVES 2/14'),
-          completedSteps: text.includes('STEPS 7/44'),
-          nextStepVisible: text.includes('Admin session stabilized') || text.includes('Admin Panel Access 3/3'),
-          nextSegmentVisible: /SSL HANDSHAKE/i.test(text),
+          completedSessionHijack: text.includes('Session Hijack Sim 3/3'),
+          completedObjectives: text.includes('OBJECTIVES 3/14'),
+          completedSteps: text.includes('STEPS 10/44'),
+          nextStepVisible: text.includes('Revocable session token acquired') || text.includes('Session Hijack Sim 3/3'),
+          nextSegmentVisible: /PROXY SERVER/i.test(text),
           queueVisible: text.includes('Simuletool Queue')
         };
       })()
     `);
-    if (!summary.feedHasChain || !summary.completedDatabaseLeak || !summary.completedAdminPanel || !summary.completedObjectives || !summary.completedSteps || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
+    if (!summary.feedHasChain || !summary.completedDatabaseLeak || !summary.completedAdminPanel || !summary.completedSessionHijack || !summary.completedObjectives || !summary.completedSteps || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
       const snapshot = await pageSnapshot(evaluate);
       throw new Error(`Completed VS step summary was incomplete: ${JSON.stringify(summary)}\n${snapshot}`);
     }
@@ -732,6 +900,14 @@ async function main() {
       hashState,
       openedSsl,
       sslState,
+      openedPacketTracer,
+      packetTracerState,
+      openedCertViewer,
+      certViewerState,
+      openedKeylogger,
+      keyloggerState,
+      openedProxy,
+      proxyState,
       summary,
     }, null, 2));
   } catch (error) {
@@ -759,7 +935,11 @@ async function pageSnapshot(evaluate) {
         fullText.indexOf('Encryption Pipeline'),
         fullText.indexOf('WHOIS Lookup'),
         fullText.indexOf('Hash Cracker'),
-        fullText.indexOf('SSL Handshake')
+        fullText.indexOf('SSL Handshake'),
+        fullText.indexOf('Packet Sniffer'),
+        fullText.indexOf('Cert Viewer'),
+        fullText.indexOf('Keylogger Sim'),
+        fullText.indexOf('Proxy Server Simulator')
       );
       const modalText = modalIndex >= 0 ? fullText.slice(modalIndex, modalIndex + 1600) : '';
       const bodyText = fullText.slice(0, 1800);

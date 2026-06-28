@@ -7,6 +7,7 @@ import {
   getNextOpsStep,
   getRecommendedTools,
   getStepToolChainItems,
+  getToolOpsProfile,
   resolveOpsAction,
 } from './opsEngine';
 
@@ -95,6 +96,27 @@ describe('ordered ops simuletool chains', () => {
     expect(chainToolIds.filter((toolId) => !modalGameIds.has(toolId))).toEqual([]);
     expect(chainToolIds).not.toContain('cyber-duel-arena');
     expect(chainToolIds).not.toContain('password-quest');
+  });
+
+  it('keeps every chain segment aligned with the active step effects', () => {
+    const mismatches = OPS_OBJECTIVES.flatMap((objective) => (
+      objective.steps.flatMap((step) => (
+        getStepToolChainItems(step).map((item) => {
+          const profile = getToolOpsProfile(item.tool);
+          const matchingEffects = profile.effects.filter((effect) => step.accepts.includes(effect));
+          return {
+            objective: objective.id,
+            step: step.id,
+            tool: item.tool.name,
+            accepts: step.accepts,
+            provides: profile.effects,
+            matchingEffects,
+          };
+        })
+      ))
+    )).filter((entry) => entry.matchingEffects.length === 0);
+
+    expect(mismatches).toEqual([]);
   });
 
   it('rejects meta or training-only games as operation progress', () => {

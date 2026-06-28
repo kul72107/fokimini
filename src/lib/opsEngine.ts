@@ -1292,6 +1292,7 @@ export function getToolOpsProfile(tool: AttackTool): ToolOpsProfile {
   if (tool.category === 'defense') effects.add('defense');
 
   if (name.includes('dns')) addEffects(effects, ['dns', 'osint', 'network']);
+  if (name.includes('network')) addEffects(effects, ['network']);
   if (name.includes('whois')) addEffects(effects, ['osint', 'recon']);
   if (name.includes('nmap') || name.includes('port scan') || name.includes('scanner')) addEffects(effects, ['recon', 'network']);
   if (name.includes('packet') || name.includes('tracer')) addEffects(effects, ['traffic', 'network']);
