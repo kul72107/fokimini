@@ -81,7 +81,7 @@ export const playerRouter = createRouter({
       action: z.string(),
       xpGained: z.number().int().positive(),
       description: z.string().optional(),
-      metadata: z.record(z.any()).optional(),
+      metadata: z.record(z.string(), z.any()).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRouter, authedQuery, authedMutation } from "./middleware";
 import { getDb } from "./queries/connection";
 import { battleLogs, playerDefenses, playerProfiles, playerStats, notifications } from "../db/schema";
-import { eq, and, desc, or } from "drizzle-orm";
+import { eq, and, desc, or, sql } from "drizzle-orm";
 
 const ATTACK_TYPES = ["port_scan", "sql_injection", "xss", "ddos", "phishing", "brute_force", "trojan", "ransomware", "social_engineering", "mitm", "zero_day", "custom"] as const;
 const RESULTS = ["full_breach", "breach", "partial", "defended", "blocked"] as const;
@@ -75,12 +75,12 @@ export const battleRouter = createRouter({
 
       // Update attacker stats
       await db.update(playerStats)
-        .set({ attacksLaunched: db.$count(battleLogs, eq(battleLogs.attackerId, attackerId)) + 1 })
+        .set({ attacksLaunched: sql`${playerStats.attacksLaunched} + 1` })
         .where(eq(playerStats.userId, attackerId));
 
       if (result.result === "full_breach" || result.result === "breach") {
         await db.update(playerStats)
-          .set({ attacksSuccessful: db.$count(battleLogs, and(eq(battleLogs.attackerId, attackerId), or(...["full_breach", "breach"].map(r => eq(battleLogs.result, r))))) })
+          .set({ attacksSuccessful: sql`${playerStats.attacksSuccessful} + 1` })
           .where(eq(playerStats.userId, attackerId));
       }
 

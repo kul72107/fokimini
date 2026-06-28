@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRouter, publicQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { leaderboardEntries, playerProfiles, playerStats, playerAchievements, achievements } from "../db/schema";
-import { eq, and, desc, gte } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 
 export const leaderboardRouter = createRouter({
   // ─── Weekly Leaderboard ───
@@ -39,8 +39,8 @@ export const leaderboardRouter = createRouter({
       }
 
       return entries.map((e, i) => ({
-        rank: i + 1,
         ...e,
+        rank: i + 1,
         displayName: profileMap.get(e.userId)?.displayName || "Unknown",
         avatar: profileMap.get(e.userId)?.avatar || "cat-default",
         title: profileMap.get(e.userId)?.title || "Script Kitten",
@@ -103,7 +103,7 @@ export const leaderboardRouter = createRouter({
       const ach = await db.select().from(achievements).where(eq(achievements.id, input.achievementId)).limit(1);
       if (ach.length) {
         await db.update(playerProfiles)
-          .set({ totalXp: db.$count(playerProfiles, eq(playerProfiles.userId, input.userId)) + ach[0].xpReward })
+          .set({ totalXp: sql`${playerProfiles.totalXp} + ${ach[0].xpReward}` })
           .where(eq(playerProfiles.userId, input.userId));
       }
 

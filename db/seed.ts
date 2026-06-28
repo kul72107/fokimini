@@ -1,4 +1,4 @@
-import { getDb } from "./queries/connection";
+import { getDb } from "../api/queries/connection";
 import { cyberTools, achievements } from "./schema";
 
 /* ═══════════════════════════════════════════════════════════════════════

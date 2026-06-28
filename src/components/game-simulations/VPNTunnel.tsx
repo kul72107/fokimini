@@ -128,10 +128,13 @@ export default function VPNTunnel({ onScoreChange }: Props) {
 
   const handleAuth = (method: AuthMethod) => {
     setAuthMethod(method);
-    handleStep('key_exchange');
+    setStep('key_exchange');
+    setKeyExchanged(true);
+    setMessage(`Key exchange complete! ${method === 'password' ? 'Pre-shared key' : 'Certificate-based'} authentication successful. Encryption keys generated!`);
   };
 
   const handleSendPacket = () => {
+    setStep('send_packet');
     setPacketsSent((p) => p + 1);
     setShowEncrypted(true);
     setTimeout(() => setShowEncrypted(false), 1500);
@@ -529,7 +532,7 @@ export default function VPNTunnel({ onScoreChange }: Props) {
             </p>
 
             {/* Send packet button */}
-            {step === 'send_packet' && (
+            {(step === 'tunnel' || step === 'send_packet') && (
               <button
                 onClick={handleSendPacket}
                 className="flex items-center gap-2 px-5 py-2 bg-yellow-accent border-[3px] border-black rounded-full font-nunito font-bold text-sm text-black hover:brightness-110 transition-all hover:scale-105"
