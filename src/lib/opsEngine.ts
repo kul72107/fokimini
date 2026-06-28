@@ -1301,7 +1301,8 @@ export function getToolOpsProfile(tool: AttackTool): ToolOpsProfile {
   if (name.includes('xss')) addEffects(effects, ['xss', 'web', 'payload']);
   if (name.includes('hash') || name.includes('password') || name.includes('access')) addEffects(effects, ['credential', 'crypto']);
   if (name.includes('phishing')) addEffects(effects, ['osint', 'payload']);
-  if (name.includes('trojan') || name.includes('keylogger') || name.includes('malware')) addEffects(effects, ['malware', 'payload', 'endpoint']);
+  if (name.includes('trojan')) addEffects(effects, ['malware', 'payload', 'endpoint', 'persistence']);
+  if (name.includes('keylogger') || name.includes('malware')) addEffects(effects, ['malware', 'payload', 'endpoint']);
   if (name.includes('cert') || name.includes('ssl')) addEffects(effects, ['cert', 'crypto']);
   if (name.includes('firewall')) addEffects(effects, ['firewall', 'defense']);
   if (name.includes('ids') || name.includes('log')) addEffects(effects, ['log', 'edr', 'traffic']);

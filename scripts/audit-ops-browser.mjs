@@ -267,6 +267,49 @@ async function main() {
       }
     }
 
+    async function clickModalText(text, exact = false) {
+      const clicked = await evaluate(`
+        (() => {
+          const expected = ${JSON.stringify(text)};
+          const exact = ${JSON.stringify(exact)};
+          const nodes = [...document.querySelectorAll('.fixed button, .fixed a')];
+          const node = nodes.find((item) => {
+            const label = (item.innerText || item.textContent || '').replace(/\\s+/g, ' ').trim();
+            return exact ? label === expected : label.includes(expected);
+          });
+          if (!node) return false;
+          node.scrollIntoView({ block: 'center', inline: 'center' });
+          node.click();
+          return true;
+        })()
+      `);
+      if (!clicked) {
+        const snapshot = await pageSnapshot(evaluate);
+        throw new Error(`Could not click modal text "${text}".\n${snapshot}`);
+      }
+    }
+
+    async function clickTrojanPaletteTab(index) {
+      const clicked = await evaluate(`
+        (() => {
+          const index = ${JSON.stringify(index)};
+          const headings = [...document.querySelectorAll('.fixed h3')];
+          const heading = headings.find((item) => item.innerText.includes('Component Palette'));
+          const panel = heading?.closest('.bg-white');
+          const buttons = panel ? [...panel.querySelectorAll('button')].slice(0, 4) : [];
+          const button = buttons[index];
+          if (!button) return false;
+          button.scrollIntoView({ block: 'center', inline: 'center' });
+          button.click();
+          return true;
+        })()
+      `);
+      if (!clicked) {
+        const snapshot = await pageSnapshot(evaluate);
+        throw new Error(`Could not click Trojan palette tab ${index}.\n${snapshot}`);
+      }
+    }
+
     async function openQueuedTool(expectedText) {
       const opened = await evaluate(`
         (() => {
@@ -860,6 +903,125 @@ async function main() {
     `, 12000);
     console.error('[audit] Session Hijack Sim objective completed through ordered GUI chain');
 
+    await clickByText('Web Malware Implant');
+    await waitFor('Web Malware Implant selected', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Web Malware Implant') &&
+          text.includes('Find upload or CMS path') &&
+          text.toUpperCase().includes('NMAP SCANNER');
+      })()
+    `, 12000);
+    console.error('[audit] Web Malware Implant selected');
+
+    const openedWebNmap = await openQueuedTool('Nmap Scanner');
+    await waitFor('Web Nmap modal', `Boolean(document.body?.innerText.includes('Nmap Port Scanner') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Use a narrow app-layer test and respect blocked patterns', true);
+    await clickModalText('Correlate timestamps before taking the next action', true);
+    await clickModalText('Web Server');
+    await clickModalText('Full Scan');
+    await clickModalText('LAUNCH SCAN');
+    await waitFor('Web Nmap full scan complete', `Boolean(document.body?.innerText.includes('Scans: 1') || document.body?.innerText.includes('OS Guess'))`, 45000);
+    await clickModalText('Stealth Scan');
+    await clickModalText('LAUNCH SCAN');
+    await waitFor('Web Nmap score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Scans: 2') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 45000);
+    const webNmapState = await readModalState(openedWebNmap);
+    await assertSubmittable(webNmapState, 'Web Nmap');
+    await submitStep();
+    await waitFor('Web Malware step 1 completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 3/14') &&
+          text.includes('STEPS 11/44') &&
+          text.includes('Web Malware Implant 1/3') &&
+          text.includes('Bypass content guard') &&
+          text.toUpperCase().includes('XSS TESTER GUI');
+      })()
+    `, 12000);
+    console.error('[audit] Web Malware step 1 completed through Nmap GUI');
+
+    const openedXssTester = await openQueuedTool('XSS Tester');
+    await waitFor('XSS Tester modal', `Boolean(document.body?.innerText.includes('XSS Tester') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Use a narrow app-layer test and respect blocked patterns', true);
+    await clickModalText('Pick the smallest scoped fix path before retrying', true);
+    await clickModalText('Script Alert');
+    await waitFor('XSS detected', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('XSS DETECTED!') &&
+          text.includes('ALERT(1)');
+      })()
+    `, 12000);
+    await clickModalText('Show Sanitized');
+    await waitFor('XSS score ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('Sanitized Output:') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const xssTesterState = await readModalState(openedXssTester);
+    await assertSubmittable(xssTesterState, 'XSS Tester');
+    await submitStep();
+    await waitFor('Web Malware step 2 completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 3/14') &&
+          text.includes('STEPS 12/44') &&
+          text.includes('Web Malware Implant 2/3') &&
+          text.includes('Plant simulated web payload') &&
+          text.toUpperCase().includes('TROJAN BUILDER');
+      })()
+    `, 12000);
+    console.error('[audit] Web Malware step 2 completed through XSS Tester GUI');
+
+    const openedTrojan = await openQueuedTool('Trojan Builder');
+    await waitFor('Trojan Builder modal', `Boolean(document.body?.innerText.includes('Trojan Builder') && document.body?.innerText.includes('Counter Stack'))`);
+    await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
+    await clickModalText('Correlate timestamps before taking the next action', true);
+    await clickModalText('Office Macro');
+    await clickTrojanPaletteTab(1);
+    await clickModalText('Screen Capture');
+    await clickTrojanPaletteTab(2);
+    await clickModalText('Registry Key');
+    await clickTrojanPaletteTab(3);
+    await clickModalText('HTTPS Beacon');
+    await waitFor('Trojan assembly ready', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('All component types assembled!') &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    await clickModalText('Test Against Defenses');
+    await waitFor('Trojan test lab ready', `Boolean(document.body?.innerText.includes('Defense Testing Lab') && document.body?.innerText.includes('Run Test'))`);
+    await clickModalText('Run Test');
+    await waitFor('Trojan test result', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return (text.includes('Detected by:') || text.includes('Trojan evaded all defenses!')) &&
+          text.includes('Operation run is strong enough');
+      })()
+    `, 12000);
+    const trojanState = await readModalState(openedTrojan);
+    await assertSubmittable(trojanState, 'Trojan Builder');
+    await submitStep();
+    await waitFor('Web Malware objective completion', `
+      (() => {
+        const text = document.body.innerText.replace(/\\s+/g, ' ');
+        return text.includes('OBJECTIVES 4/14') &&
+          text.includes('STEPS 13/44') &&
+          text.includes('Web Malware Implant 3/3');
+      })()
+    `, 12000);
+    console.error('[audit] Web Malware Implant objective completed through ordered GUI chain');
+
     const summary = await evaluate(`
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
@@ -869,15 +1031,16 @@ async function main() {
           completedDatabaseLeak: text.includes('Database Leak 4/4'),
           completedAdminPanel: text.includes('Admin Panel Access 3/3'),
           completedSessionHijack: text.includes('Session Hijack Sim 3/3'),
-          completedObjectives: text.includes('OBJECTIVES 3/14'),
-          completedSteps: text.includes('STEPS 10/44'),
-          nextStepVisible: text.includes('Revocable session token acquired') || text.includes('Session Hijack Sim 3/3'),
-          nextSegmentVisible: /PROXY SERVER/i.test(text),
+          completedWebMalware: text.includes('Web Malware Implant 3/3'),
+          completedObjectives: text.includes('OBJECTIVES 4/14'),
+          completedSteps: text.includes('STEPS 13/44'),
+          nextStepVisible: text.includes('Web payload staged') || text.includes('Web Malware Implant 3/3'),
+          nextSegmentVisible: /TROJAN BUILDER/i.test(text),
           queueVisible: text.includes('Simuletool Queue')
         };
       })()
     `);
-    if (!summary.feedHasChain || !summary.completedDatabaseLeak || !summary.completedAdminPanel || !summary.completedSessionHijack || !summary.completedObjectives || !summary.completedSteps || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
+    if (!summary.feedHasChain || !summary.completedDatabaseLeak || !summary.completedAdminPanel || !summary.completedSessionHijack || !summary.completedWebMalware || !summary.completedObjectives || !summary.completedSteps || !summary.nextStepVisible || !summary.nextSegmentVisible || !summary.queueVisible) {
       const snapshot = await pageSnapshot(evaluate);
       throw new Error(`Completed VS step summary was incomplete: ${JSON.stringify(summary)}\n${snapshot}`);
     }
@@ -908,6 +1071,12 @@ async function main() {
       keyloggerState,
       openedProxy,
       proxyState,
+      openedWebNmap,
+      webNmapState,
+      openedXssTester,
+      xssTesterState,
+      openedTrojan,
+      trojanState,
       summary,
     }, null, 2));
   } catch (error) {
@@ -939,7 +1108,9 @@ async function pageSnapshot(evaluate) {
         fullText.indexOf('Packet Sniffer'),
         fullText.indexOf('Cert Viewer'),
         fullText.indexOf('Keylogger Sim'),
-        fullText.indexOf('Proxy Server Simulator')
+        fullText.indexOf('Proxy Server Simulator'),
+        fullText.indexOf('XSS Tester'),
+        fullText.indexOf('Trojan Builder')
       );
       const modalText = modalIndex >= 0 ? fullText.slice(modalIndex, modalIndex + 1600) : '';
       const bodyText = fullText.slice(0, 1800);
