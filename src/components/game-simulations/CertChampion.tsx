@@ -1,12 +1,13 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Lock, Unlock, Shield, ShieldCheck, Key, Calendar,
   Hash, Settings, Award, ChevronRight, RotateCcw, Trophy,
   Check, X, Sparkles, Zap, FileKey, Fingerprint, AlertTriangle
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -60,38 +61,54 @@ function generatePieces(fields: CertField[]): CertPiece[] {
   })).sort(() => Math.random() - 0.5);
 }
 
-const LEVELS: LevelConfig[] = [
-  {
-    id: 1,
-    name: 'Cert Builder Basic',
-    description: 'Build a certificate with 4 essential fields!',
-    mode: 'assemble',
-    fields: ['subject', 'issuer', 'validFrom', 'validUntil'].map((id) => ALL_FIELDS.find((f) => f.id === id)!),
-  },
-  {
-    id: 2,
-    name: 'Add Security',
-    description: 'Add the Public Key and Algorithm fields!',
-    mode: 'assemble',
-    fields: ['subject', 'issuer', 'validFrom', 'validUntil', 'publicKey', 'algorithm'].map((id) => ALL_FIELDS.find((f) => f.id === id)!),
-  },
-  {
-    id: 3,
-    name: 'Complete Certificate',
-    description: 'Assemble a full certificate with all 8 fields!',
-    mode: 'assemble',
-    fields: ALL_FIELDS,
-  },
-  {
-    id: 4,
-    name: 'Cert Inspector',
-    description: 'Find and fix the broken field in this certificate!',
-    mode: 'fix',
-    fields: ALL_FIELDS,
-    brokenField: 'validUntil',
-    brokenValue: 'Jan 1, 2020 (EXPIRED!)',
-  },
-];
+function buildLevels(fields: CertField[]): LevelConfig[] {
+  return [
+    {
+      id: 1,
+      name: 'Cert Builder Basic',
+      description: 'Build a certificate with 4 essential fields!',
+      mode: 'assemble',
+      fields: ['subject', 'issuer', 'validFrom', 'validUntil'].map((id) => fields.find((f) => f.id === id)!),
+    },
+    {
+      id: 2,
+      name: 'Add Security',
+      description: 'Add the Public Key and Algorithm fields!',
+      mode: 'assemble',
+      fields: ['subject', 'issuer', 'validFrom', 'validUntil', 'publicKey', 'algorithm'].map((id) => fields.find((f) => f.id === id)!),
+    },
+    {
+      id: 3,
+      name: 'Complete Certificate',
+      description: 'Assemble a full certificate with all 8 fields!',
+      mode: 'assemble',
+      fields,
+    },
+    {
+      id: 4,
+      name: 'Cert Inspector',
+      description: 'Find and fix the broken field in this certificate!',
+      mode: 'fix',
+      fields,
+      brokenField: 'validUntil',
+      brokenValue: 'Feb 1, 2024 (EXPIRED!)',
+    },
+  ];
+}
+
+function buildOpsFields({ target }: NonNullable<OpsContextProps['opsContext']>): CertField[] {
+  const examples: Record<string, string> = {
+    subject: target.certificate.subject,
+    issuer: target.certificate.issuer,
+    validFrom: target.certificate.validFrom,
+    validUntil: target.certificate.validTo,
+    publicKey: 'RSA 2048-bit',
+    algorithm: 'SHA-256',
+    serial: target.certificate.serialNumber,
+    keyUsage: 'Digital Signature, Key Encipherment',
+  };
+  return ALL_FIELDS.map((field) => ({ ...field, example: examples[field.id] ?? field.example }));
+}
 
 function FieldIcon({ icon, size = 16 }: { icon: CertField['icon']; size?: number }) {
   const props = { size, strokeWidth: 3, className: 'text-white' };
@@ -106,7 +123,9 @@ function FieldIcon({ icon, size = 16 }: { icon: CertField['icon']; size?: number
   }
 }
 
-export default function CertChampion({ onScoreChange }: Props) {
+export default function CertChampion({ onScoreChange, opsContext }: Props) {
+  const fields = useMemo(() => opsContext ? buildOpsFields(opsContext) : ALL_FIELDS, [opsContext]);
+  const levels = useMemo(() => buildLevels(fields), [fields]);
   const [currentLevel, setCurrentLevel] = useState(0);
   const [gameState, setGameState] = useState<'menu' | 'playing' | 'levelComplete' | 'allComplete' | 'gameOver'>('menu');
   const [slots, setSlots] = useState<Record<string, CertPiece | null>>({});
@@ -120,10 +139,10 @@ export default function CertChampion({ onScoreChange }: Props) {
   const [attempts, setAttempts] = useState(0);
   const [foundBrokenField, setFoundBrokenField] = useState(false);
 
-  const level = LEVELS[currentLevel];
+  const level = levels[currentLevel];
 
   const initLevel = useCallback((lvlIdx: number) => {
-    const lvl = LEVELS[lvlIdx];
+    const lvl = levels[lvlIdx];
     const initialSlots: Record<string, CertPiece | null> = {};
     const initialStatus: Record<string, 'correct' | 'wrong' | 'empty'> = {};
 
@@ -151,7 +170,7 @@ export default function CertChampion({ onScoreChange }: Props) {
       setPieces([{
         id: 'fix-piece',
         fieldId: lvl.brokenField!,
-        value: ALL_FIELDS.find((f) => f.id === lvl.brokenField)!.example,
+        value: fields.find((f) => f.id === lvl.brokenField)!.example,
         color: '#4ADE80',
       }]);
     } else {
@@ -170,7 +189,7 @@ export default function CertChampion({ onScoreChange }: Props) {
     setMessage(lvl.mode === 'fix' ? 'Find the broken field and fix it!' : 'Fill in all certificate fields!');
     setFoundBrokenField(false);
     setGameState('playing');
-  }, []);
+  }, [fields, levels]);
 
   const startGame = () => {
     setCurrentLevel(0);
@@ -260,7 +279,7 @@ export default function CertChampion({ onScoreChange }: Props) {
           onScoreChange(Math.min(100, newTotal));
           setTimeout(() => setConfetti(false), 3000);
 
-          if (currentLevel >= LEVELS.length - 1) {
+          if (currentLevel >= levels.length - 1) {
             setGameState('allComplete');
           } else {
             setGameState('levelComplete');
@@ -282,7 +301,7 @@ export default function CertChampion({ onScoreChange }: Props) {
   };
 
   const nextLevel = () => {
-    if (currentLevel < LEVELS.length - 1) {
+    if (currentLevel < levels.length - 1) {
       setCurrentLevel((prev) => prev + 1);
       initLevel(currentLevel + 1);
     }
@@ -532,7 +551,7 @@ export default function CertChampion({ onScoreChange }: Props) {
                   style={{ backgroundColor: piece.color }}
                 >
                   <FieldIcon
-                    icon={ALL_FIELDS.find((f) => f.id === piece.fieldId)?.icon || 'key'}
+                    icon={fields.find((f) => f.id === piece.fieldId)?.icon || 'key'}
                     size={10}
                   />
                 </div>

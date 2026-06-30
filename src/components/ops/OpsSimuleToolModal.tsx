@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity,
   CheckCircle,
+  Fingerprint,
   Gauge,
   Puzzle,
   Shield,
@@ -59,6 +60,11 @@ import {
   type OpsStep,
 } from '@/lib/opsEngine';
 import type { AttackTool, BattleTarget } from '@/lib/battleEngine';
+import {
+  createOpsToolContext,
+  type OpsProofOption,
+  type OpsToolContext,
+} from '@/lib/opsContext';
 
 type ScoreHandler = (score: number) => void;
 
@@ -186,109 +192,131 @@ function rotateOptions(options: string[], seed: string) {
 export function SimuleGame({
   gameId,
   onScoreChange,
+  opsContext,
 }: {
   gameId: string;
   onScoreChange: ScoreHandler;
+  opsContext?: OpsToolContext;
 }) {
+  const gameProps = { onScoreChange, opsContext };
   switch (gameId) {
     case 'password-quest':
-      return <PasswordQuest onScoreChange={onScoreChange} />;
+      return <PasswordQuest {...gameProps} />;
     case 'phishing-detective':
-      return <PhishingDetective onScoreChange={onScoreChange} />;
+      return <PhishingDetective {...gameProps} />;
     case 'firewall-defender':
-      return <FirewallDefender onScoreChange={onScoreChange} />;
+      return <FirewallDefender {...gameProps} />;
     case 'crypto-cat':
-      return <CryptoCat onScoreChange={onScoreChange} />;
+      return <CryptoCat {...gameProps} />;
     case 'malware-hunter':
-      return <MalwareHunter onScoreChange={onScoreChange} />;
+      return <MalwareHunter {...gameProps} />;
     case 'network-navigator':
-      return <NetworkNavigator onScoreChange={onScoreChange} />;
+      return <NetworkNavigator {...gameProps} />;
     case 'ssl-handshake':
-      return <SSLHandshake onScoreChange={onScoreChange} />;
+      return <SSLHandshake {...gameProps} />;
     case 'dns-resolver':
-      return <DNSResolver onScoreChange={onScoreChange} />;
+      return <DNSResolver {...gameProps} />;
     case 'packet-tracer':
-      return <PacketTracer onScoreChange={onScoreChange} />;
+      return <PacketTracer {...gameProps} />;
     case 'subnet-calculator':
-      return <SubnetCalculator onScoreChange={onScoreChange} />;
+      return <SubnetCalculator {...gameProps} />;
     case 'vpn-tunnel':
-      return <VPNTunnel onScoreChange={onScoreChange} />;
+      return <VPNTunnel {...gameProps} />;
     case 'load-balancer':
-      return <LoadBalancer onScoreChange={onScoreChange} />;
+      return <LoadBalancer {...gameProps} />;
     case 'ids-alert':
-      return <IDSAlert onScoreChange={onScoreChange} />;
+      return <IDSAlert {...gameProps} />;
     case 'certificate-chain':
-      return <CertificateChain onScoreChange={onScoreChange} />;
+      return <CertificateChain {...gameProps} />;
     case 'proxy-server':
-      return <ProxyServer onScoreChange={onScoreChange} />;
+      return <ProxyServer {...gameProps} />;
     case 'port-scanner':
-      return <PortScanner onScoreChange={onScoreChange} />;
+      return <PortScanner {...gameProps} />;
     case 'encryption-pipeline':
-      return <EncryptionPipeline onScoreChange={onScoreChange} />;
+      return <EncryptionPipeline {...gameProps} />;
     case 'sql-safari':
-      return <SQLSafari onScoreChange={onScoreChange} />;
+      return <SQLSafari {...gameProps} />;
     case 'stego-spy':
-      return <StegoSpy onScoreChange={onScoreChange} />;
+      return <StegoSpy {...gameProps} />;
     case 'xss-xpert':
-      return <XSSXpert onScoreChange={onScoreChange} />;
+      return <XSSXpert {...gameProps} />;
     case 'cert-champion':
-      return <CertChampion onScoreChange={onScoreChange} />;
+      return <CertChampion {...gameProps} />;
     case 'hash-hacker':
-      return <HashHacker onScoreChange={onScoreChange} />;
+      return <HashHacker {...gameProps} />;
     case 'access-ace':
-      return <AccessAce onScoreChange={onScoreChange} />;
+      return <AccessAce {...gameProps} />;
     case 'log-analyzer':
-      return <LogAnalyzer onScoreChange={onScoreChange} />;
+      return <LogAnalyzer {...gameProps} />;
     case 'nmap-scanner':
     case 'advanced-port-scan':
-      return <NmapScanner onScoreChange={onScoreChange} />;
+      return <NmapScanner {...gameProps} />;
     case 'dns-lookup-gui':
-      return <DNSLookup onScoreChange={onScoreChange} />;
+      return <DNSLookup {...gameProps} />;
     case 'whois-lookup':
-      return <WhoisLookup onScoreChange={onScoreChange} />;
+      return <WhoisLookup {...gameProps} />;
     case 'sql-injector-gui':
-      return <SQLInjector onScoreChange={onScoreChange} />;
+      return <SQLInjector {...gameProps} />;
     case 'xss-tester-gui':
-      return <XSSTester onScoreChange={onScoreChange} />;
+      return <XSSTester {...gameProps} />;
     case 'hash-cracker-gui':
-      return <HashCracker onScoreChange={onScoreChange} />;
+      return <HashCracker {...gameProps} />;
     case 'phishing-sim-gui':
-      return <PhishingSim onScoreChange={onScoreChange} />;
+      return <PhishingSim {...gameProps} />;
     case 'cert-viewer-gui':
-      return <CertViewer onScoreChange={onScoreChange} />;
+      return <CertViewer {...gameProps} />;
     case 'network-packet-tracer':
-      return <PacketSnifferGUI onScoreChange={onScoreChange} />;
+      return <PacketSnifferGUI {...gameProps} />;
     case 'xor-tool':
-      return <XORTool onScoreChange={onScoreChange} />;
+      return <XORTool {...gameProps} />;
     case 'trojan-builder':
-      return <TrojanBuilder onScoreChange={onScoreChange} />;
+      return <TrojanBuilder {...gameProps} />;
     case 'keylogger-sim':
-      return <KeyloggerSim onScoreChange={onScoreChange} />;
+      return <KeyloggerSim {...gameProps} />;
     default:
-      return <OpsCircuitFallback onScoreChange={onScoreChange} />;
+      return <OpsCircuitFallback onScoreChange={onScoreChange} opsContext={opsContext} />;
   }
 }
 
-function OpsCircuitFallback({ onScoreChange }: { onScoreChange: ScoreHandler }) {
+function OpsCircuitFallback({
+  onScoreChange,
+  opsContext,
+}: {
+  onScoreChange: ScoreHandler;
+  opsContext?: OpsToolContext;
+}) {
   const [selected, setSelected] = useState<Record<string, string>>({});
+  const target = opsContext?.target;
   const lanes = [
     {
       id: 'signal',
       title: 'Signal',
-      cards: ['Trusted log event', 'Random banner text', 'Matching DNS clue'],
-      answer: 'Matching DNS clue',
+      cards: [
+        target?.logs.loginEvent ?? 'Trusted log event',
+        'Random banner text',
+        target ? `${target.hosts.resolver} -> ${target.ips.web}` : 'Matching DNS clue',
+      ],
+      answer: target ? `${target.hosts.resolver} -> ${target.ips.web}` : 'Matching DNS clue',
     },
     {
       id: 'route',
       title: 'Route',
-      cards: ['Verified target path', 'Noisy detour', 'Unrelated endpoint'],
-      answer: 'Verified target path',
+      cards: [
+        target ? `${target.primaryDomain}${target.adminPath}` : 'Verified target path',
+        'Noisy detour',
+        target?.hosts.cdn ?? 'Unrelated endpoint',
+      ],
+      answer: target ? `${target.primaryDomain}${target.adminPath}` : 'Verified target path',
     },
     {
       id: 'control',
       title: 'Control',
-      cards: ['Small scoped action', 'Broad unsafe change', 'Ignore the counter'],
-      answer: 'Small scoped action',
+      cards: [
+        target ? `Scoped action for ${target.platformName}` : 'Small scoped action',
+        'Broad unsafe change',
+        'Ignore the counter',
+      ],
+      answer: target ? `Scoped action for ${target.platformName}` : 'Small scoped action',
     },
   ];
 
@@ -343,9 +371,11 @@ function EffectBadge({ effect }: { effect: OpsEffect }) {
 
 function CounterStackChallenge({
   counters,
+  opsContext,
   onScoreChange,
 }: {
   counters: OpsEffect[];
+  opsContext?: OpsToolContext;
   onScoreChange: ScoreHandler;
 }) {
   const visibleCounters = counters.slice(0, 3);
@@ -386,7 +416,7 @@ function CounterStackChallenge({
         <h3 className="font-fredoka text-xl font-black text-purple-darker">Counter Stack</h3>
       </div>
       <p className="mb-3 font-nunito text-xs font-bold text-purple-dark">
-        Target defenses appear automatically for this step. Pick the clean maneuver for each one.
+        Target defenses appear automatically for {opsContext?.target.platformName ?? 'this step'}. Pick the clean maneuver for each one.
       </p>
       <div className="space-y-3">
         {optionSets.map((set) => (
@@ -419,6 +449,69 @@ function CounterStackChallenge({
   );
 }
 
+function ArtifactProofChallenge({
+  opsContext,
+  onScoreChange,
+}: {
+  opsContext: OpsToolContext;
+  onScoreChange: ScoreHandler;
+}) {
+  const requiredCount = opsContext.contract.options.filter((option) => option.correct).length;
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const choose = (option: OpsProofOption) => {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(option.id)) next.delete(option.id);
+      else next.add(option.id);
+
+      const correctPicked = opsContext.contract.options.filter((item) => item.correct && next.has(item.id)).length;
+      const wrongPicked = opsContext.contract.options.filter((item) => !item.correct && next.has(item.id)).length;
+      const score = Math.max(0, Math.round((correctPicked / Math.max(1, requiredCount)) * 100) - wrongPicked * 35);
+      onScoreChange(score);
+      return next;
+    });
+  };
+
+  return (
+    <div className="mt-3 rounded-2xl border-[3px] border-black bg-white p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <Fingerprint size={20} strokeWidth={3} className="text-purple-primary" />
+        <h3 className="font-fredoka text-xl font-black text-purple-darker">Target Proof</h3>
+      </div>
+      <p className="font-nunito text-xs font-bold text-purple-dark">
+        {opsContext.contract.instruction}
+      </p>
+      <div className="mt-3 space-y-2">
+        {opsContext.contract.options.map((option) => {
+          const active = selected.has(option.id);
+          return (
+            <button
+              key={option.id}
+              data-ops-proof={option.correct ? 'correct' : 'decoy'}
+              data-ops-proof-selected={active ? 'true' : 'false'}
+              onClick={() => choose(option)}
+              className={`w-full rounded-xl border-2 border-black px-3 py-2 text-left transition-transform hover:scale-[1.01] ${
+                active ? 'bg-yellow-accent' : 'bg-purple-pale'
+              }`}
+            >
+              <span className="block font-nunito text-[11px] font-black text-purple-darker">
+                {option.label}
+              </span>
+              <span className="block font-nunito text-[10px] font-bold text-purple-dark">
+                {option.detail}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-3 rounded-xl border-2 border-black bg-green-success/20 px-3 py-2 font-nunito text-[10px] font-black uppercase text-purple-darker">
+        Expected proof: {opsContext.contract.expectedProof}
+      </p>
+    </div>
+  );
+}
+
 export default function OpsSimuleToolModal({
   tool,
   objective,
@@ -434,14 +527,24 @@ export default function OpsSimuleToolModal({
   const [currentScore, setCurrentScore] = useState(0);
   const [bestScore, setBestScore] = useState(0);
   const [counterScore, setCounterScore] = useState(step.defenderCounters.length === 0 ? 100 : 0);
+  const [proofScore, setProofScore] = useState(0);
   const [scoreEvents, setScoreEvents] = useState(0);
   const simuleTool = useMemo(() => getSimuleTool(tool), [tool]);
   const profile = useMemo(() => getToolOpsProfile(tool), [tool]);
+  const opsContext = useMemo(() => createOpsToolContext({
+    target,
+    objective,
+    step,
+    tool,
+    chainPosition,
+    chainTotal,
+  }), [target, objective, step, tool, chainPosition, chainTotal]);
   const requiredScore = getRequiredScore(objective);
   const directEffects = profile.effects.filter((effect) => step.accepts.includes(effect));
   const bridgedEffects = availableEffects.filter((effect) => step.accepts.includes(effect) && !profile.effects.includes(effect));
-  const operationScore = Math.round((bestScore * 0.72) + (counterScore * 0.28));
-  const canComplete = operationScore >= requiredScore;
+  const operationScore = Math.round((bestScore * 0.56) + (counterScore * 0.2) + (proofScore * 0.24));
+  const requiredProofScore = 60;
+  const canComplete = operationScore >= requiredScore && proofScore >= requiredProofScore;
   const isFinalChainSegment = chainPosition >= chainTotal;
 
   const handleScoreChange = (score: number) => {
@@ -484,7 +587,7 @@ export default function OpsSimuleToolModal({
                   {tool.name}
                 </h2>
                 <p className="font-nunito text-sm font-black text-purple-dark">
-                  {step.title} on {target.displayName}
+                  {step.title} on {opsContext.target.platformName} ({opsContext.target.primaryDomain})
                 </p>
               </div>
               <button
@@ -505,7 +608,7 @@ export default function OpsSimuleToolModal({
                   <h3 className="font-fredoka text-xl font-black text-purple-darker">Step Gate</h3>
                 </div>
                 <p className="font-nunito text-xs font-bold text-purple-dark">
-                  This modal commits segment {chainPosition}/{chainTotal}. The VS step advances only after every ordered segment is complete.
+                  This modal commits segment {chainPosition}/{chainTotal} against {opsContext.target.platformName}. The VS step advances only after the ordered tool GUI, counter stack, and target proof are all strong enough.
                 </p>
                 <div className="mt-4 rounded-xl border-[3px] border-black bg-purple-pale p-3">
                   <div className="mb-2 flex items-center justify-between">
@@ -519,7 +622,7 @@ export default function OpsSimuleToolModal({
                     />
                   </div>
                   <p className="mt-2 font-nunito text-[10px] font-black uppercase text-purple-primary">
-                    Required {requiredScore}/100 · Tool {bestScore}/100 · Counter {counterScore}/100
+                    Required {requiredScore}/100 · Tool {bestScore}/100 · Counter {counterScore}/100 · Proof {proofScore}/100
                   </p>
                   <p className="mt-1 font-nunito text-[10px] font-black uppercase text-purple-light">
                     Current tool {currentScore}/100 · Events {scoreEvents}
@@ -535,9 +638,15 @@ export default function OpsSimuleToolModal({
               <div className="mt-3">
                 <CounterStackChallenge
                   counters={step.defenderCounters}
+                  opsContext={opsContext}
                   onScoreChange={(score) => setCounterScore(clampScore(score))}
                 />
               </div>
+
+              <ArtifactProofChallenge
+                opsContext={opsContext}
+                onScoreChange={(score) => setProofScore(clampScore(score))}
+              />
 
               <div className="mt-3 rounded-2xl border-[3px] border-black bg-white p-4">
                 <div className="mb-3 flex items-center gap-2">
@@ -574,10 +683,10 @@ export default function OpsSimuleToolModal({
               <div className="mt-3 rounded-2xl border-[3px] border-black bg-white p-4">
                 <div className="flex items-center gap-2">
                   <Shield size={20} strokeWidth={3} className="text-green-success" />
-                  <h3 className="font-fredoka text-xl font-black text-purple-darker">Target Pressure</h3>
+                  <h3 className="font-fredoka text-xl font-black text-purple-darker">Target Context</h3>
                 </div>
                 <p className="mt-1 font-nunito text-xs font-bold text-purple-dark">
-                  Defense power {target.defensePower}. Higher pressure means weak GUI performance is easier to interrupt.
+                  {opsContext.target.orgName} uses {opsContext.target.databaseName}, {opsContext.target.apiName}, and {opsContext.target.sessionCookieName}. Defense power {target.defensePower}.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {[...directEffects, ...bridgedEffects].length === 0 ? (
@@ -602,6 +711,9 @@ export default function OpsSimuleToolModal({
                     <p className="font-nunito text-xs font-bold text-purple-dark">
                       Use the actual controls below; the operation result uses your best score.
                     </p>
+                    <p className="font-nunito text-[10px] font-black uppercase text-purple-primary">
+                      Target-bound: {opsContext.target.primaryDomain} · {opsContext.target.databaseName}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 rounded-xl border-[3px] border-black bg-white px-3 py-2">
@@ -611,7 +723,11 @@ export default function OpsSimuleToolModal({
               </div>
 
               <div className="overflow-hidden rounded-2xl border-[3px] border-black bg-white">
-                <SimuleGame gameId={simuleTool?.gameId ?? tool.name} onScoreChange={handleScoreChange} />
+                <SimuleGame
+                  gameId={simuleTool?.gameId ?? tool.name}
+                  onScoreChange={handleScoreChange}
+                  opsContext={opsContext}
+                />
               </div>
             </main>
           </div>
@@ -628,7 +744,7 @@ export default function OpsSimuleToolModal({
               ) : (
                 <>
                   <Zap size={18} strokeWidth={3} className="text-yellow-accent" />
-                  Reach {requiredScore}/100 to submit this chain segment.
+                  Reach {requiredScore}/100 and target proof {requiredProofScore}/100 to submit this chain segment.
                 </>
               )}
             </div>

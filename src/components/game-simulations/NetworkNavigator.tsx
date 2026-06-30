@@ -1,12 +1,13 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Network, Heart, Star, Lock, Key, Shield, ShieldAlert, Check,
   Skull, Router, ArrowRight, RotateCcw, ChevronRight, Trophy, Zap
 } from 'lucide-react';
 import SimuleToolTrainingPanel from './SimuleToolTrainingPanel';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -184,6 +185,35 @@ const LEVELS: LevelData[] = [
   },
 ];
 
+function buildOpsLevels({ target }: NonNullable<OpsContextProps['opsContext']>): LevelData[] {
+  const routeNames = [
+    `${target.platformName} Edge Route`,
+    `${target.platformName} Split Path`,
+    `${target.platformName} Firewall Maze`,
+    `${target.platformName} Dual Firewall`,
+    `${target.platformName} Trap Field`,
+    `${target.platformName} Keyed Route`,
+    `${target.platformName} Decoy Route`,
+    `${target.platformName} Master Route`,
+  ];
+  const routeDescriptions = [
+    `Route ${target.ips.client} through ${target.hosts.resolver} and the app WAF to ${target.hosts.app}.`,
+    `Pick the protected service lane for ${target.hosts.api}; the upper path is a decoy telemetry trap.`,
+    `Reach ${target.hosts.admin} only after passing the required firewall checkpoint.`,
+    `Cross both target firewalls before touching ${target.hosts.db}.`,
+    `Avoid decoy malware nodes while routing toward ${target.backupName}.`,
+    `Collect the ${target.apiKeyName} route key before opening the locked target segment.`,
+    `Choose the lane tied to ${target.primaryDomain}, not the decoy route.`,
+    `Chain resolver, WAF, key, and locked service routing for ${target.platformName}.`,
+  ];
+
+  return LEVELS.map((level, index) => ({
+    ...level,
+    name: routeNames[index] ?? level.name,
+    description: routeDescriptions[index] ?? level.description,
+  }));
+}
+
 const NETWORK_SIMULETOOLS = [
   'network-navigator',
   'packet-tracer',
@@ -226,7 +256,8 @@ function NodeIcon({ type, size = 16 }: { type: NodeType; size?: number }) {
   }
 }
 
-export default function NetworkNavigator({ onScoreChange }: Props) {
+export default function NetworkNavigator({ onScoreChange, opsContext }: Props) {
+  const levels = useMemo(() => opsContext ? buildOpsLevels(opsContext) : LEVELS, [opsContext]);
   const [currentLevel, setCurrentLevel] = useState(0);
   const [lives, setLives] = useState(3);
   const [path, setPath] = useState<string[]>([]);
@@ -237,8 +268,8 @@ export default function NetworkNavigator({ onScoreChange }: Props) {
   const [shakeNode, setShakeNode] = useState<string | null>(null);
   const [wrongPathFlash, setWrongPathFlash] = useState(false);
   const [totalScore, setTotalScore] = useState(0);
-  const [levelScores, setLevelScores] = useState<(number | null)[]>(new Array(8).fill(null));
-  const [levelStars, setLevelStars] = useState<(number | null)[]>(new Array(8).fill(null));
+  const [levelScores, setLevelScores] = useState<(number | null)[]>(new Array(levels.length).fill(null));
+  const [levelStars, setLevelStars] = useState<(number | null)[]>(new Array(levels.length).fill(null));
   const [attemptsThisLevel, setAttemptsThisLevel] = useState(0);
   const [showLevelSelect, setShowLevelSelect] = useState(true);
   const [pathEdges, setPathEdges] = useState<[string, string][]>([]);
@@ -248,7 +279,7 @@ export default function NetworkNavigator({ onScoreChange }: Props) {
   const livesRef = useRef(lives);
   useEffect(() => { livesRef.current = lives; }, [lives]);
 
-  const level = LEVELS[currentLevel];
+  const level = levels[currentLevel] ?? levels[0];
 
   const resetLevel = useCallback(() => {
     const startNode = level.startNode;
@@ -414,7 +445,7 @@ export default function NetworkNavigator({ onScoreChange }: Props) {
   );
 
   const handleNextLevel = () => {
-    if (currentLevel < LEVELS.length - 1) {
+    if (currentLevel < levels.length - 1) {
       setCurrentLevel((prev) => prev + 1);
       setAttemptsThisLevel(0);
       setShowLevelSelect(true);
@@ -426,8 +457,8 @@ export default function NetworkNavigator({ onScoreChange }: Props) {
   const handleRetry = () => {
     setLives(3);
     setTotalScore(0);
-    setLevelScores(new Array(8).fill(null));
-    setLevelStars(new Array(8).fill(null));
+    setLevelScores(new Array(levels.length).fill(null));
+    setLevelStars(new Array(levels.length).fill(null));
     setAttemptsThisLevel(0);
     setCurrentLevel(0);
     setShowLevelSelect(true);
@@ -523,8 +554,13 @@ export default function NetworkNavigator({ onScoreChange }: Props) {
         <div className="text-center mb-2">
           <h2 className="font-fredoka text-2xl text-purple-dark text-outline-sm">Network Navigator</h2>
           <p className="font-nunito text-sm text-purple-dark mt-1">
-            Build paths through network diagrams. Pass through Firewalls to win!
+            Build a valid route through the active target network. Pass required firewalls to win!
           </p>
+          {opsContext && (
+            <p className="font-mono text-[10px] font-bold text-purple-primary mt-1">
+              {opsContext.target.primaryDomain} / {opsContext.target.networkCidr}
+            </p>
+          )}
         </div>
 
         {/* HUD Summary */}
@@ -537,13 +573,13 @@ export default function NetworkNavigator({ onScoreChange }: Props) {
             Score: {totalScore}
           </div>
           <div className="font-nunito text-xs text-purple-lighter">
-            Level: {currentLevel + 1}/8
+            Level: {currentLevel + 1}/{levels.length}
           </div>
         </div>
 
         {/* Level Grid */}
         <div className="w-full max-w-lg grid grid-cols-4 gap-3">
-          {LEVELS.map((lvl, idx) => {
+          {levels.map((lvl, idx) => {
             const isUnlocked = idx === 0 || levelScores[idx - 1] !== null;
             const isCompleted = levelScores[idx] !== null;
             const stars = levelStars[idx];
@@ -947,7 +983,7 @@ export default function NetworkNavigator({ onScoreChange }: Props) {
               Score: {levelScores[currentLevel]}
             </p>
             <div className="flex gap-2 mt-1">
-              {currentLevel < LEVELS.length - 1 ? (
+              {currentLevel < levels.length - 1 ? (
                 <button
                   onClick={handleNextLevel}
                   className="flex items-center gap-1 px-5 py-2 bg-purple-primary border-[3px] border-black rounded-full font-nunito font-bold text-sm text-white hover:bg-purple-dark transition-colors hover:scale-105"

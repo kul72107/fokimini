@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Globe, Calendar, Shield, Lock, Unlock, Star,
   Server, User, Building, MapPin, Check, X, Clock, ChevronRight,
   Award, Trophy
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -54,6 +55,41 @@ const DEMO_DOMAINS: WhoisData[] = [
   },
 ];
 
+function buildOpsDomains({ target }: NonNullable<OpsContextProps['opsContext']>): WhoisData[] {
+  return [
+    {
+      domain: target.primaryDomain,
+      registrar: { name: `${target.orgName} Registrar`, ianaId: `7${target.targetId.padStart(3, '0')}`, url: `https://${target.hosts.admin}${target.adminPath}`, color: '#60A5FA' },
+      dates: { created: '2025-03-12', updated: '2026-06-01', expires: '2027-03-12', color: '#7C3AED' },
+      owner: { organization: target.orgName, country: 'US', state: 'Lab State', color: '#4ADE80' },
+      nameservers: [target.hosts.resolver, `ns2.${target.rootDomain}`, target.hosts.vendor],
+      dnssec: true,
+      status: ['clientTransferProhibited', 'opsTargetLocked'],
+      favorites: false,
+    },
+    {
+      domain: target.hosts.vendor,
+      registrar: { name: `${target.vendorName} Registry`, ianaId: `8${target.targetId.padStart(3, '0')}`, url: `https://${target.hosts.vendor}/trust`, color: '#F472B6' },
+      dates: { created: '2025-09-04', updated: '2026-05-10', expires: '2026-09-04', color: '#7C3AED' },
+      owner: { organization: target.vendorName, country: 'US', state: 'Partner Zone', color: '#FACC15' },
+      nameservers: [target.hosts.resolver, target.hosts.vendor],
+      dnssec: true,
+      status: ['partnerVerified'],
+      favorites: false,
+    },
+    {
+      domain: target.hosts.old,
+      registrar: { name: `${target.orgName} Legacy Registrar`, ianaId: `9${target.targetId.padStart(3, '0')}`, url: `https://${target.hosts.old}/archive`, color: '#FB923C' },
+      dates: { created: '2022-02-15', updated: '2024-02-01', expires: '2024-02-15', color: '#F87171' },
+      owner: { organization: `${target.orgName} Legacy`, country: 'US', state: 'Archive', color: '#F87171' },
+      nameservers: [target.hosts.resolver],
+      dnssec: false,
+      status: ['legacyHold', 'manualReview'],
+      favorites: false,
+    },
+  ];
+}
+
 const CARD_ICONS = {
   registrar: <Globe size={20} strokeWidth={3} />,
   dates: <Calendar size={20} strokeWidth={3} />,
@@ -73,7 +109,8 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-export default function WhoisLookup({ onScoreChange }: Props) {
+export default function WhoisLookup({ onScoreChange, opsContext }: Props) {
+  const domains = useMemo(() => opsContext ? buildOpsDomains(opsContext) : DEMO_DOMAINS, [opsContext]);
   const [domainInput, setDomainInput] = useState('');
   const [result, setResult] = useState<WhoisData | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -86,7 +123,7 @@ export default function WhoisLookup({ onScoreChange }: Props) {
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
 
   const handleLookup = (domain?: string) => {
-    const query = (domain || domainInput).toLowerCase().trim();
+    const query = (domain || domainInput || domains[0]?.domain || '').toLowerCase().trim();
     if (!query) return;
 
     setIsSearching(true);
@@ -95,7 +132,7 @@ export default function WhoisLookup({ onScoreChange }: Props) {
     setShowTimeline(false);
 
     setTimeout(() => {
-      const match = DEMO_DOMAINS.find(d => d.domain === query);
+      const match = domains.find(d => d.domain === query);
       if (match) {
         if (compareMode && result) {
           setCompareResult(match);
@@ -112,10 +149,10 @@ export default function WhoisLookup({ onScoreChange }: Props) {
         // Generate random whois data for unknown domains
         const generated: WhoisData = {
           domain: query,
-          registrar: { name: 'Generic Registrar LLC', ianaId: '9999', url: 'https://example.com', color: '#60A5FA' },
+          registrar: { name: opsContext ? `${opsContext.target.platformName} Unknown Registry` : 'Generic Registrar LLC', ianaId: '9999', url: opsContext ? `https://${opsContext.target.hosts.admin}${opsContext.target.adminPath}` : 'https://example.com', color: '#60A5FA' },
           dates: { created: '2022-06-01', updated: '2024-01-01', expires: '2026-06-01', color: '#7C3AED' },
-          owner: { organization: 'Private Registrant', country: 'US', state: 'Delaware', color: '#4ADE80' },
-          nameservers: ['ns1.example.com', 'ns2.example.com'],
+          owner: { organization: opsContext?.target.orgName ?? 'Private Registrant', country: 'US', state: opsContext ? 'Target Lab' : 'Delaware', color: '#4ADE80' },
+          nameservers: opsContext ? [opsContext.target.hosts.resolver, `ns2.${opsContext.target.rootDomain}`] : ['ns1.example.com', 'ns2.example.com'],
           dnssec: false,
           status: ['active'],
           favorites: false,
@@ -165,7 +202,7 @@ export default function WhoisLookup({ onScoreChange }: Props) {
             type="text"
             value={domainInput}
             onChange={(e) => setDomainInput(e.target.value)}
-            placeholder="cyberpaws.kids"
+            placeholder={domains[0]?.domain ?? 'cyberpaws.kids'}
             className="flex-1 min-w-[120px] px-3 py-2 bg-purple-pale border-[3px] border-black rounded-xl font-mono text-sm text-purple-dark focus:outline-none focus:border-purple-primary"
             onKeyDown={(e) => e.key === 'Enter' && handleLookup()}
           />
@@ -197,7 +234,7 @@ export default function WhoisLookup({ onScoreChange }: Props) {
       {/* Quick domains */}
       <div className="flex flex-wrap items-center gap-2 justify-center">
         <span className="font-nunito text-xs font-bold text-purple-dark">Quick:</span>
-        {DEMO_DOMAINS.map((d) => (
+        {domains.map((d) => (
           <button
             key={d.domain}
             onClick={() => { setDomainInput(d.domain); handleLookup(d.domain); }}

@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, ShieldAlert, Check, X } from 'lucide-react';
 import SimuleToolTrainingPanel from './SimuleToolTrainingPanel';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface FirewallDefenderProps {
+interface FirewallDefenderProps extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -12,12 +13,20 @@ interface Packet {
   type: 'good' | 'bad';
   color: string;
   label: string;
+  detail?: string;
   x: number;
   y: number;
   speed: number;
 }
 
-const PACKET_TYPES = [
+interface PacketTemplate {
+  type: 'good' | 'bad';
+  color: string;
+  label: string;
+  detail?: string;
+}
+
+const PACKET_TYPES: PacketTemplate[] = [
   { type: 'good' as const, color: '#4ADE80', label: 'HTTPS' },
   { type: 'good' as const, color: '#60A5FA', label: 'DNS' },
   { type: 'good' as const, color: '#A78BFA', label: 'SSH' },
@@ -25,6 +34,19 @@ const PACKET_TYPES = [
   { type: 'bad' as const, color: '#FB923C', label: 'INTRUSION' },
   { type: 'bad' as const, color: '#EF4444', label: 'DDOS' },
 ];
+
+function buildOpsPackets(opsContext?: OpsContextProps['opsContext']): PacketTemplate[] {
+  if (!opsContext) return PACKET_TYPES;
+  const { target } = opsContext;
+  return [
+    { ...PACKET_TYPES[0], detail: target.hosts.app },
+    { ...PACKET_TYPES[1], detail: target.hosts.resolver },
+    { ...PACKET_TYPES[2], detail: target.hosts.admin },
+    { ...PACKET_TYPES[3], detail: target.safePayloadName },
+    { ...PACKET_TYPES[4], detail: target.ips.attacker },
+    { ...PACKET_TYPES[5], detail: target.networkCidr },
+  ];
+}
 
 const FIREWALL_SIMULETOOLS = [
   'packet-tracer',
@@ -34,7 +56,8 @@ const FIREWALL_SIMULETOOLS = [
   'ids-alert',
 ] as const;
 
-export default function FirewallDefender({ onScoreChange }: FirewallDefenderProps) {
+export default function FirewallDefender({ onScoreChange, opsContext }: FirewallDefenderProps) {
+  const packetTypes = useMemo(() => buildOpsPackets(opsContext), [opsContext]);
   const [packets, setPackets] = useState<Packet[]>([]);
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(3);
@@ -54,7 +77,7 @@ export default function FirewallDefender({ onScoreChange }: FirewallDefenderProp
 
   const spawnPacket = useCallback(() => {
     setPacketId((prevId) => {
-      const template = PACKET_TYPES[Math.floor(Math.random() * PACKET_TYPES.length)];
+      const template = packetTypes[Math.floor(Math.random() * packetTypes.length)];
       const newPacket: Packet = {
         id: prevId,
         ...template,
@@ -65,7 +88,7 @@ export default function FirewallDefender({ onScoreChange }: FirewallDefenderProp
       setPackets((prev) => [...prev.slice(-20), newPacket]);
       return prevId + 1;
     });
-  }, []);
+  }, [packetTypes]);
 
   useEffect(() => {
     if (!gameActive || lives <= 0) return;
@@ -110,11 +133,11 @@ export default function FirewallDefender({ onScoreChange }: FirewallDefenderProp
       (packet.type === 'bad' && action === 'block');
 
     if (correct) {
-      setScore((prev) => {
-        const newScore = prev + 10;
-        onScoreChange(Math.min(100, newScore));
-        return newScore;
-      });
+      const newScore = Math.min(100, scoreRef.current + 10);
+      scoreRef.current = newScore;
+      setScore(newScore);
+      onScoreChange(newScore);
+      if (newScore >= 50) setGameActive(false);
       if (action === 'block') setBlocked((b) => b + 1);
       else setAllowed((a) => a + 1);
     } else {
@@ -140,6 +163,8 @@ export default function FirewallDefender({ onScoreChange }: FirewallDefenderProp
     setPacketId(0);
     onScoreChange(0);
   };
+
+  const successfulDefense = score >= 40;
 
   return (
     <div className="flex flex-col items-center gap-4 p-4">
@@ -171,7 +196,7 @@ export default function FirewallDefender({ onScoreChange }: FirewallDefenderProp
         <div className="absolute bottom-0 left-0 right-0 h-16 bg-purple-dark border-t-[4px] border-black flex items-center justify-center">
           <div className="flex items-center gap-2">
             <Shield size={24} strokeWidth={3} className="text-yellow-accent" fill="#FACC15" />
-            <span className="font-fredoka font-bold text-lg text-white">FIREWALL</span>
+            <span className="font-fredoka font-bold text-lg text-white">{opsContext?.target.hosts.app ?? 'FIREWALL'}</span>
             <Shield size={24} strokeWidth={3} className="text-yellow-accent" fill="#FACC15" />
           </div>
         </div>
@@ -183,7 +208,7 @@ export default function FirewallDefender({ onScoreChange }: FirewallDefenderProp
               Firewall Defender
             </h3>
             <p className="font-nunito text-sm text-purple-dark text-center px-8 mb-4">
-              Allow good traffic (green/blue) and block bad traffic (red/orange)!
+              Allow target service traffic and block hostile packets tied to this operation.
             </p>
             <button
               onClick={startGame}
@@ -195,10 +220,10 @@ export default function FirewallDefender({ onScoreChange }: FirewallDefenderProp
         )}
 
         {!gameActive && (lives <= 0 || (score > 0 && !gameActive)) && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-red-alert/20 z-20">
-            <ShieldAlert size={48} strokeWidth={3} className="text-red-alert mb-3" />
-            <h3 className="font-fredoka font-bold text-xl text-red-alert mb-2">
-              {lives <= 0 ? 'Firewall Breached!' : 'Game Over'}
+          <div className={`absolute inset-0 flex flex-col items-center justify-center z-20 ${successfulDefense ? 'bg-green-success/20' : 'bg-red-alert/20'}`}>
+            <ShieldAlert size={48} strokeWidth={3} className={successfulDefense ? 'text-green-success mb-3' : 'text-red-alert mb-3'} />
+            <h3 className={`font-fredoka font-bold text-xl mb-2 ${successfulDefense ? 'text-green-success' : 'text-red-alert'}`}>
+              {successfulDefense ? 'Defense Stabilized!' : lives <= 0 ? 'Firewall Breached!' : 'Game Over'}
             </h3>
             <p className="font-nunito text-sm text-purple-dark mb-4">
               Final Score: {score}
@@ -230,6 +255,11 @@ export default function FirewallDefender({ onScoreChange }: FirewallDefenderProp
                 <span className="font-nunito text-[9px] font-bold text-white leading-none">
                   {packet.label}
                 </span>
+                {packet.detail && (
+                  <span className="font-nunito text-[6px] font-bold text-white/90 leading-none max-w-[48px] truncate">
+                    {packet.detail}
+                  </span>
+                )}
               </div>
 
               {/* Action buttons */}

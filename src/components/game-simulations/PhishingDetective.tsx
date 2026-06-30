@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X, AlertTriangle, Mail, User, Link as LinkIcon, Paperclip } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface PhishingDetectiveProps {
+interface PhishingDetectiveProps extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -60,15 +61,57 @@ const emailChallenges: EmailChallenge[] = [
   },
 ];
 
-export default function PhishingDetective({ onScoreChange }: PhishingDetectiveProps) {
+function buildOpsChallenges({ target }: NonNullable<OpsContextProps['opsContext']>): EmailChallenge[] {
+  const fakeDomain = `secure-${target.rootDomain.replace('.', '-')}.ops`;
+  return [
+    {
+      id: 1,
+      from: `security@${fakeDomain}`,
+      fromDisplay: `${target.platformName} Security`,
+      subject: `${target.platformName}: urgent session reset`,
+      body: `Dear ${target.standardUser},\n\nWe detected unusual activity on ${target.primaryDomain}. Your ${target.sessionCookieName} session will be locked unless you verify immediately.\n\nClick here to verify: http://${fakeDomain}${target.adminPath}\n\nBest regards,\n${target.platformName} Security`,
+      isPhishing: true,
+      suspiciousElements: [
+        { id: 'sender', label: 'Sender', x: 15, y: 15, description: `Fake sender domain: ${fakeDomain} does not match ${target.rootDomain}` },
+        { id: 'urgency', label: 'Urgency', x: 50, y: 35, description: `Creates false urgency around ${target.sessionCookieName}` },
+        { id: 'link', label: 'Link', x: 30, y: 65, description: `Suspicious link: ${fakeDomain} is not ${target.primaryDomain}` },
+      ],
+    },
+    {
+      id: 2,
+      from: target.supportEmail,
+      fromDisplay: `${target.platformName} Support`,
+      subject: `${target.backupName} verification complete`,
+      body: `Hello,\n\nThe clean snapshot ${target.backupName} has been verified from ${target.hosts.backup}.\n\nReference: ${target.logs.backupEvent}\n\nThanks,\n${target.platformName} Support`,
+      isPhishing: false,
+      suspiciousElements: [],
+    },
+    {
+      id: 3,
+      from: `prize@${target.hosts.old}`,
+      fromDisplay: `${target.orgName} Legacy Rewards`,
+      subject: `Claim privileged ${target.platformName} access now`,
+      body: `CONGRATULATIONS!!!\n\nYou were selected for emergency admin access to ${target.hosts.admin}.\n\nTo claim it, reply with ${target.apiKeyName} and your approval code.\n\nOffer expires in 10 minutes!`,
+      isPhishing: true,
+      suspiciousElements: [
+        { id: 'sender', label: 'Sender', x: 15, y: 15, description: `Legacy host ${target.hosts.old} should not request active credentials` },
+        { id: 'prize', label: 'Too Good', x: 50, y: 30, description: `Unexpected admin access is not a normal ${target.platformName} workflow` },
+        { id: 'fee', label: 'Secret Request', x: 30, y: 75, description: `Requests ${target.apiKeyName}, which should never be sent by email` },
+      ],
+    },
+  ];
+}
+
+export default function PhishingDetective({ onScoreChange, opsContext }: PhishingDetectiveProps) {
+  const challenges = useMemo(() => opsContext ? buildOpsChallenges(opsContext) : emailChallenges, [opsContext]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [foundElements, setFoundElements] = useState<string[]>([]);
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState(0);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
 
-  const currentEmail = emailChallenges[currentIndex];
-  const totalScore = emailChallenges.reduce((sum, e) => sum + e.suspiciousElements.length * 25, 0);
+  const currentEmail = challenges[currentIndex] ?? challenges[0];
+  const totalScore = challenges.reduce((sum, e) => sum + e.suspiciousElements.length * 25, 0);
 
   const handleElementClick = (elementId: string) => {
     if (foundElements.includes(elementId)) return;
@@ -83,7 +126,7 @@ export default function PhishingDetective({ onScoreChange }: PhishingDetectivePr
   };
 
   const handleNext = () => {
-    if (currentIndex < emailChallenges.length - 1) {
+    if (currentIndex < challenges.length - 1) {
       setCurrentIndex(currentIndex + 1);
       setFoundElements([]);
       setShowResult(false);
@@ -100,7 +143,7 @@ export default function PhishingDetective({ onScoreChange }: PhishingDetectivePr
         {/* Progress */}
         <div className="flex items-center justify-between mb-4">
           <span className="font-nunito text-sm font-semibold text-purple-dark">
-            Email {currentIndex + 1} of {emailChallenges.length}
+            Email {currentIndex + 1} of {challenges.length}
           </span>
           <span className="font-nunito text-sm font-bold text-purple-primary">
             Score: {score}

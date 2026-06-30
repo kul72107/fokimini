@@ -1,11 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe, Laptop, Server, ArrowRight, Zap, Database,
   Search, Star, MapPin, Clock, Check, BookOpen, RefreshCw
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -84,6 +85,56 @@ const DEMO_DOMAINS: DemoDomain[] = [
   },
 ];
 
+function buildOpsDomains({ target }: NonNullable<OpsContextProps['opsContext']>): DemoDomain[] {
+  return [
+    {
+      name: target.primaryDomain,
+      cached: false,
+      records: [
+        { type: 'A', value: target.ips.web, ttl: 300 },
+        { type: 'AAAA', value: `2001:db8:${target.targetId}::10`, ttl: 300 },
+        { type: 'CNAME', value: target.hosts.app, ttl: 600 },
+        { type: 'MX', value: target.hosts.mail, ttl: 3600, priority: 10 },
+        { type: 'NS', value: target.hosts.resolver, ttl: 86400 },
+        { type: 'NS', value: `ns2.${target.rootDomain}`, ttl: 86400 },
+        { type: 'TXT', value: `v=spf1 include:_spf.${target.rootDomain} -all`, ttl: 3600 },
+        { type: 'SOA', value: `${target.hosts.resolver}. ${target.adminEmail.replace('@', '.')}. 2026062901 3600 600 86400 300`, ttl: 86400 },
+      ],
+      path: [
+        { server: `Root Server (.ops TLD)`, ip: '198.41.0.4', response: `Referral: ${target.hosts.resolver}`, color: '#F472B6' },
+        { server: `${target.orgName} TLD DNS`, ip: target.ips.resolver, response: `Referral: ${target.hosts.resolver}`, color: '#FB923C' },
+        { server: `${target.platformName} Authoritative`, ip: target.ips.resolver, response: `A: ${target.ips.web}`, color: '#4ADE80' },
+      ],
+    },
+    {
+      name: target.hosts.api,
+      cached: true,
+      records: [
+        { type: 'A', value: target.ips.api, ttl: 120 },
+        { type: 'CNAME', value: target.hosts.api, ttl: 600 },
+        { type: 'NS', value: target.hosts.resolver, ttl: 86400 },
+        { type: 'TXT', value: `api=${target.apiName}; owner=${target.serviceAccount}`, ttl: 900 },
+      ],
+      path: [
+        { server: `${target.platformName} Recursive Cache`, ip: target.ips.resolver, response: `Cached: A = ${target.ips.api}`, color: '#4ADE80' },
+      ],
+    },
+    {
+      name: target.hosts.backup,
+      cached: false,
+      records: [
+        { type: 'A', value: target.ips.backup, ttl: 600 },
+        { type: 'NS', value: target.hosts.resolver, ttl: 86400 },
+        { type: 'TXT', value: `backup-index=${target.backupName}`, ttl: 900 },
+      ],
+      path: [
+        { server: `Root Server (.ops TLD)`, ip: '198.41.0.4', response: `Referral: ${target.hosts.resolver}`, color: '#F472B6' },
+        { server: `${target.platformName} Authoritative`, ip: target.ips.resolver, response: `A: ${target.ips.backup}`, color: '#4ADE80' },
+      ],
+    },
+  ];
+}
+
 const RECORD_INFO: Record<RecordType, string> = {
   A: 'Maps a domain name to an IPv4 address (like 192.168.1.1)',
   AAAA: 'Maps a domain name to an IPv6 address (like 2001:db8::1)',
@@ -103,7 +154,8 @@ const NODE_POSITIONS = [
   { x: 96, label: 'Result', icon: <MapPin size={18} strokeWidth={3} />, color: '#FACC15' },
 ];
 
-export default function DNSLookup({ onScoreChange }: Props) {
+export default function DNSLookup({ onScoreChange, opsContext }: Props) {
+  const domains = useMemo(() => opsContext ? buildOpsDomains(opsContext) : DEMO_DOMAINS, [opsContext]);
   const [domainInput, setDomainInput] = useState('');
   const [selectedRecordType, setSelectedRecordType] = useState<RecordType>('A');
   const [activeDomain, setActiveDomain] = useState<DemoDomain | null>(null);
@@ -116,15 +168,16 @@ export default function DNSLookup({ onScoreChange }: Props) {
   const [showInfo, setShowInfo] = useState<RecordType | null>(null);
 
   const handleResolve = useCallback(() => {
-    const match = DEMO_DOMAINS.find(
-      d => d.name === (domainInput.toLowerCase().trim() || 'cyberpaws.kids')
-    ) || DEMO_DOMAINS[0];
+    const defaultDomain = domains[0]?.name ?? 'cyberpaws.kids';
+    const match = domains.find(
+      d => d.name === (domainInput.toLowerCase().trim() || defaultDomain)
+    ) || domains[0];
     setActiveDomain(match);
     setTraceStep(-1);
     setShowResults(false);
     setIsTracing(false);
     setSelectedServer(null);
-  }, [domainInput]);
+  }, [domainInput, domains]);
 
   const startTrace = () => {
     if (!activeDomain) return;
@@ -183,7 +236,7 @@ export default function DNSLookup({ onScoreChange }: Props) {
             type="text"
             value={domainInput}
             onChange={(e) => setDomainInput(e.target.value)}
-            placeholder="cyberpaws.kids"
+            placeholder={domains[0]?.name ?? 'cyberpaws.kids'}
             className="flex-1 min-w-[120px] px-3 py-2 bg-purple-pale border-[3px] border-black rounded-xl font-mono text-sm text-purple-dark focus:outline-none focus:border-purple-primary"
             onKeyDown={(e) => e.key === 'Enter' && handleResolve()}
           />
@@ -225,7 +278,7 @@ export default function DNSLookup({ onScoreChange }: Props) {
       {/* Demo Domains */}
       <div className="flex flex-wrap items-center gap-2 justify-center">
         <span className="font-nunito text-xs font-bold text-purple-dark">Quick Select:</span>
-        {DEMO_DOMAINS.map((d) => (
+        {domains.map((d) => (
           <button
             key={d.name}
             onClick={() => handleDomainSelect(d)}

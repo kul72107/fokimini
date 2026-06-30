@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import type { OpsContextProps } from '@/lib/opsContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Crown, Wrench, Eye, User, Lock, Unlock, FileText, Shield,
@@ -217,11 +218,11 @@ function DatabaseIcon(props: { size?: number; strokeWidth?: number; className?: 
   );
 }
 
-function emptyPermissions(): PermissionState {
+function emptyPermissions(users: UserData[] = USERS, files: FileData[] = FILES): PermissionState {
   const state: PermissionState = {};
-  USERS.forEach((u) => {
+  users.forEach((u) => {
     state[u.role] = {};
-    FILES.forEach((f) => {
+    files.forEach((f) => {
       state[u.role][f.id] = { R: false, W: false, X: false };
     });
   });
@@ -234,9 +235,33 @@ function clampScore(s: number) {
 
 // ─── Main Component ──────────────────────────────────────
 
-export default function AccessAce({ onScoreChange }: { onScoreChange: (score: number) => void }) {
+export default function AccessAce({ onScoreChange, opsContext }: { onScoreChange: (score: number) => void } & OpsContextProps) {
+  const users = useMemo(() => {
+    if (!opsContext) return USERS;
+    const { target } = opsContext;
+    return [
+      { ...USERS[0], name: target.adminUser },
+      { ...USERS[1], name: target.serviceAccount },
+      { ...USERS[2], name: target.standardUser },
+      { ...USERS[3], name: target.supportEmail.split('@')[0] },
+    ];
+  }, [opsContext]);
+  const files = useMemo(() => {
+    if (!opsContext) return FILES;
+    const { target } = opsContext;
+    const safePlatform = target.platformName.replace(/\s+/g, '_').toLowerCase();
+    const safeApi = target.apiName.replace(/\s+/g, '_').toLowerCase();
+    return [
+      { ...FILES[0], name: `${target.sessionCookieName}.token` },
+      { ...FILES[1], name: `${safeApi}_config.json` },
+      { ...FILES[2], name: `${safePlatform}_logo.png` },
+      { ...FILES[3], name: `${target.primaryDomain}.html` },
+      { ...FILES[4], name: `${target.databaseName}.sql` },
+      { ...FILES[5], name: `${target.backupName}.csv` },
+    ];
+  }, [opsContext]);
   const [currentLevel, setCurrentLevel] = useState(0);
-  const [permissions, setPermissions] = useState<PermissionState>(emptyPermissions());
+  const [permissions, setPermissions] = useState<PermissionState>(() => emptyPermissions(users, files));
   const [activeTab, setActiveTab] = useState<'files' | 'matrix' | 'test' | 'calculator'>('files');
   const [testResults, setTestResults] = useState<TestResult[] | null>(null);
   const [isTesting, setIsTesting] = useState(false);
@@ -254,18 +279,18 @@ export default function AccessAce({ onScoreChange }: { onScoreChange: (score: nu
 
   const level = LEVELS[currentLevel];
 
-  const currentUsers = USERS.filter((u) => level.users.includes(u.id));
-  const currentFiles = FILES.filter((f) => level.files.includes(f.id));
+  const currentUsers = users.filter((u) => level.users.includes(u.id));
+  const currentFiles = files.filter((f) => level.files.includes(f.id));
 
   // Reset permissions on level change + cleanup any running test interval
   useEffect(() => {
-    setPermissions(emptyPermissions());
+    setPermissions(emptyPermissions(users, files));
     setTestResults(null);
     setIsTesting(false);
     setLevelComplete(false);
     setActiveTab('files');
     setEducationalTip('');
-  }, [currentLevel]);
+  }, [currentLevel, users, files]);
 
   // Cleanup interval on unmount
   useEffect(() => {
@@ -393,7 +418,7 @@ export default function AccessAce({ onScoreChange }: { onScoreChange: (score: nu
             <h2 className="font-fredoka text-2xl text-purple-dark text-outline-sm">Access Ace</h2>
           </div>
           <p className="font-nunito text-sm text-purple-dark">
-            Learn Role-Based Access Control! Assign permissions to protect files.
+            Assign permissions for the active target files and roles.
           </p>
         </div>
 
@@ -454,7 +479,7 @@ export default function AccessAce({ onScoreChange }: { onScoreChange: (score: nu
 
         {/* Legend */}
         <div className="w-full max-w-lg bg-white rounded-2xl border-4 border-black p-3" style={{ boxShadow: '6px 6px 0px 0px #000' }}>
-          <p className="font-nunito text-xs font-bold text-purple-dark mb-2 text-center">Permission Guide</p>
+          <p className="font-nunito text-xs font-bold text-purple-dark mb-2 text-center">Target Permission Guide</p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             {[
               ['R', 'Read', '#4ADE80'],
@@ -784,8 +809,8 @@ export default function AccessAce({ onScoreChange }: { onScoreChange: (score: nu
                 </div>
                 <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
                   {testResults.map((result, idx) => {
-                    const user = USERS.find((u) => u.id === result.userId)!;
-                    const file = FILES.find((f) => f.id === result.fileId)!;
+                    const user = users.find((u) => u.id === result.userId)!;
+                    const file = files.find((f) => f.id === result.fileId)!;
                     return (
                       <motion.div
                         key={`${result.userId}-${result.fileId}-${result.permission}`}

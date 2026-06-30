@@ -1,12 +1,13 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Database, Terminal, Shield, ShieldAlert, Skull, Check, X,
   ChevronRight, RotateCcw, Lock, Unlock, AlertTriangle,
   BookOpen, Zap, Trophy, Star, Code, Fingerprint
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -29,6 +30,15 @@ const USERS_DB: UserRecord[] = [
   { id: 5, username: 'thumper', password: 'hop000', role: 'user', avatar: '🐰' },
   { id: 6, username: 'shadow', password: 'dark999', role: 'hacker', avatar: '🦹' },
 ];
+
+function buildOpsUsers({ target }: NonNullable<OpsContextProps['opsContext']>): UserRecord[] {
+  return [
+    { id: 1, username: target.adminUser, password: `${target.targetName.replace(/\s+/g, '')}!${target.targetId}Admin`, role: 'admin', avatar: '👑' },
+    { id: 2, username: target.standardUser, password: `${target.proofPhrase.replace(/\s+/g, '')}!`, role: 'user', avatar: '🐱' },
+    { id: 3, username: target.serviceAccount, password: `${target.apiKeyName.slice(0, 8)}-${target.xorKey}`, role: 'service', avatar: '🧩' },
+    { id: 4, username: target.supportEmail.split('@')[0], password: `${target.widgetName.replace(/\s+/g, '')}26`, role: 'support', avatar: '🛡️' },
+  ];
+}
 
 const LEVELS = [
   {
@@ -65,6 +75,40 @@ const LEVELS = [
   },
 ];
 
+function buildOpsLevels(tableName: string, secretTableName: string, adminUser: string) {
+  return LEVELS.map((level) => {
+    if (level.id === 1) {
+      return {
+        ...level,
+        description: `Test the ${tableName} login filter with the smallest scoped bypass.`,
+        attackQuery: `SELECT * FROM ${tableName} WHERE username = '' OR '1'='1'`,
+        educational: `The ' OR '1'='1 trick makes the ${tableName} WHERE condition always TRUE, so target rows are returned.`,
+      };
+    }
+    if (level.id === 2) {
+      return {
+        ...level,
+        description: `Use UNION to compare ${tableName} with ${secretTableName}.`,
+        attackQuery: `SELECT * FROM ${tableName} UNION SELECT * FROM ${secretTableName}--`,
+        hint: `Try: ' UNION SELECT * FROM ${secretTableName}--`,
+        educational: `UNION is valid here only when the extra table is ${secretTableName}.`,
+      };
+    }
+    if (level.id === 3) {
+      return {
+        ...level,
+        description: `Ask yes/no questions about ${adminUser}'s target session clue.`,
+        attackQuery: `SELECT * FROM ${tableName} WHERE username = '${adminUser}' AND SUBSTRING(session_hint,1,1)='a'`,
+        educational: 'Blind injection extracts target-bound proof one character at a time by asking true/false questions.',
+      };
+    }
+    return {
+      ...level,
+      educational: `Parameterized queries keep ${tableName} input separate from SQL code.`,
+    };
+  });
+}
+
 const DEFENSE_OPTIONS = [
   {
     id: 'parameterized',
@@ -96,7 +140,38 @@ const BINARY_QUESTIONS = [
   { q: "Is the password longer than 5 chars?", answer: true, bit: '1' },
 ];
 
-export default function SQLSafari({ onScoreChange }: Props) {
+function buildOpsBinaryQuestions({ target }: NonNullable<OpsContextProps['opsContext']>) {
+  const first = target.sessionCookieName[0].toLowerCase();
+  const second = target.sessionCookieName[1]?.toLowerCase() ?? first;
+  return [
+    { q: `Does ${target.sessionCookieName} start with '${first}'?`, answer: true, bit: '1' },
+    { q: `Does ${target.sessionCookieName} start with 'z'?`, answer: false, bit: '0' },
+    { q: `Is the 2nd letter '${second}'?`, answer: true, bit: '1' },
+    { q: `Is the ${target.platformName} token longer than 5 chars?`, answer: true, bit: '1' },
+  ];
+}
+
+export default function SQLSafari({ onScoreChange, opsContext }: Props) {
+  const usersDb = useMemo(() => opsContext ? buildOpsUsers(opsContext) : USERS_DB, [opsContext]);
+  const tableName = opsContext ? opsContext.target.databaseName : 'users';
+  const secretTableName = opsContext ? `${opsContext.target.databaseName}_secrets` : 'passwords';
+  const levels = useMemo(
+    () => opsContext ? buildOpsLevels(tableName, secretTableName, opsContext.target.adminUser) : LEVELS,
+    [opsContext, tableName, secretTableName],
+  );
+  const binaryQuestions = useMemo(
+    () => opsContext ? buildOpsBinaryQuestions(opsContext) : BINARY_QUESTIONS,
+    [opsContext],
+  );
+  const defenseOptions = useMemo(
+    () => opsContext
+      ? DEFENSE_OPTIONS.map((option) => ({
+          ...option,
+          code: option.code.replace(/users/g, tableName),
+        }))
+      : DEFENSE_OPTIONS,
+    [opsContext, tableName],
+  );
   const [currentLevel, setCurrentLevel] = useState<LevelId>(1);
   const [mode, setMode] = useState<GameMode>('menu');
   const [score, setScore] = useState(0);
@@ -104,7 +179,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
   const [completedLevels, setCompletedLevels] = useState<Set<LevelId>>(new Set());
 
   // Query building state
-  const [queryParts, setQueryParts] = useState<string[]>(["SELECT * FROM users WHERE username ="]);
+  const [queryParts, setQueryParts] = useState<string[]>([`SELECT * FROM ${tableName} WHERE username =`]);
   const [userInput, setUserInput] = useState("''");
   const [showingResult, setShowingResult] = useState(false);
   const [matchedRows, setMatchedRows] = useState<number[]>([]);
@@ -115,7 +190,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
   const [collectedBits, setCollectedBits] = useState<string[]>([]);
   const [buildProgress, setBuildProgress] = useState(0);
 
-  const level = LEVELS[currentLevel - 1];
+  const level = levels[currentLevel - 1];
 
   const awardLevel = useCallback((lvl: LevelId, points = 35) => {
     if (completedLevels.has(lvl)) return;
@@ -138,19 +213,19 @@ export default function SQLSafari({ onScoreChange }: Props) {
     setCollectedBits([]);
     setBuildProgress(0);
     if (currentLevel === 1) {
-      setQueryParts(["SELECT * FROM users WHERE username ="]);
+      setQueryParts([`SELECT * FROM ${tableName} WHERE username =`]);
       setUserInput("''");
     } else if (currentLevel === 2) {
-      setQueryParts(["SELECT * FROM users WHERE id ="]);
+      setQueryParts([`SELECT * FROM ${tableName} WHERE id =`]);
       setUserInput("''");
     } else if (currentLevel === 3) {
-      setQueryParts(["SELECT * FROM users WHERE username = 'admin' AND"]);
+      setQueryParts([`SELECT * FROM ${tableName} WHERE username = '${usersDb[0].username}' AND`]);
       setUserInput("'1'='1'");
     } else {
-      setQueryParts(["SELECT * FROM users WHERE username ="]);
+      setQueryParts([`SELECT * FROM ${tableName} WHERE username =`]);
       setUserInput("'user'");
     }
-  }, [currentLevel]);
+  }, [currentLevel, tableName, usersDb]);
 
   useEffect(() => {
     resetLevel();
@@ -166,7 +241,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
   const buildQueryStep = () => {
     if (buildProgress === 0) {
       setBuildProgress(1);
-      if (currentLevel === 1) setUserInput("'admin'");
+      if (currentLevel === 1) setUserInput(`'${usersDb[0].username}'`);
       else if (currentLevel === 2) setUserInput("'1'");
       else if (currentLevel === 3) setUserInput("SUBSTRING(password,1,1)='p'");
     } else if (buildProgress === 1) {
@@ -181,10 +256,10 @@ export default function SQLSafari({ onScoreChange }: Props) {
 
     if (currentLevel === 1) {
       if (input.includes("or") && input.includes("1") && input.includes("=")) {
-        setMatchedRows(USERS_DB.map((u) => u.id));
+        setMatchedRows(usersDb.map((u) => u.id));
         setAttackDetected(true);
         successfulLesson = true;
-      } else if (input.includes("admin")) {
+      } else if (input.includes(usersDb[0].username.toLowerCase())) {
         setMatchedRows([1]);
         setAttackDetected(false);
       } else {
@@ -193,7 +268,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
       }
     } else if (currentLevel === 2) {
       if (input.includes("union")) {
-        setMatchedRows([...USERS_DB.map((u) => u.id), 7, 8, 9]);
+        setMatchedRows([...usersDb.map((u) => u.id), 7, 8, 9]);
         setAttackDetected(true);
         successfulLesson = true;
       } else {
@@ -220,7 +295,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
   const selectDefense = (id: string) => {
     setDefenseSelected(id);
     setShowingResult(true);
-    const isCorrect = DEFENSE_OPTIONS.find((d) => d.id === id)?.correct ?? false;
+    const isCorrect = defenseOptions.find((d) => d.id === id)?.correct ?? false;
     setAttackDetected(!isCorrect);
 
     if (isCorrect) {
@@ -230,11 +305,11 @@ export default function SQLSafari({ onScoreChange }: Props) {
 
   const askBinaryQuestion = (idx: number) => {
     setBinaryIndex(idx);
-    const q = BINARY_QUESTIONS[idx];
+    const q = binaryQuestions[idx];
     if (q.answer) {
       setCollectedBits((prev) => [...prev, q.bit]);
     }
-    if (idx >= BINARY_QUESTIONS.length - 1) {
+    if (idx >= binaryQuestions.length - 1) {
       setShowingResult(true);
       setMatchedRows([1]);
       awardLevel(3);
@@ -276,7 +351,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
         </div>
 
         <div className="w-full max-w-lg grid grid-cols-2 gap-3">
-          {LEVELS.map((lvl) => {
+          {levels.map((lvl) => {
             const isUnlocked = lvl.id === 1 || completedLevels.has((lvl.id - 1) as LevelId);
             const isCompleted = completedLevels.has(lvl.id);
             return (
@@ -390,7 +465,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
           <div className="bg-purple-primary border-b-[3px] border-black px-3 py-2 flex items-center gap-2">
             <Database size={16} strokeWidth={3} className="text-white" />
             <span className="font-fredoka text-sm text-white">Users Database</span>
-            <span className="font-mono text-[10px] text-purple-lighter ml-auto">users_table</span>
+            <span className="font-mono text-[10px] text-purple-lighter ml-auto">{tableName}</span>
           </div>
 
           <div className="p-2 overflow-auto" style={{ maxHeight: 340 }}>
@@ -408,7 +483,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
 
             {/* Table Rows */}
             <AnimatePresence>
-              {USERS_DB.map((user) => {
+              {usersDb.map((user) => {
                 const isMatched = matchedRows.includes(user.id);
                 const isHighlighted = showingResult && isMatched;
                 const isAdmin = user.role === 'admin';
@@ -592,7 +667,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
                           {[
                             "' OR '1'='1",
                             "' OR '1'='1' --",
-                            "admin'--",
+                            `${usersDb[0].username}'--`,
                             "' DROP TABLE--",
                           ].map((p) => (
                             <button
@@ -610,7 +685,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
                         <div className="flex flex-wrap gap-1.5">
                           <span className="font-nunito text-[10px] text-purple-dark font-bold py-1">Payloads:</span>
                           {[
-                            "' UNION SELECT * FROM passwords--",
+                            `' UNION SELECT * FROM ${secretTableName}--`,
                             "' UNION SELECT null,null--",
                           ].map((p) => (
                             <button
@@ -630,7 +705,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
                             Blind Injection: Ask yes/no questions!
                           </span>
                           <div className="flex flex-wrap gap-1.5">
-                            {BINARY_QUESTIONS.map((q, i) => (
+                            {binaryQuestions.map((q, i) => (
                               <button
                                 key={i}
                                 onClick={() => askBinaryQuestion(i)}
@@ -745,7 +820,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
                           </p>
                           <div className="bg-black rounded-lg p-2 mt-1 border-[2px] border-white">
                             <code className="font-mono text-[9px] text-green-success">
-                              db.query(&apos;SELECT * FROM users WHERE username = ?&apos;, [input])
+                              {`db.query('SELECT * FROM ${tableName} WHERE username = ?', [input])`}
                             </code>
                           </div>
                           <button
@@ -771,7 +846,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
                     </p>
                   </div>
 
-                  {DEFENSE_OPTIONS.map((opt) => (
+                  {defenseOptions.map((opt) => (
                     <motion.button
                       key={opt.id}
                       whileHover={{ scale: 1.02 }}
@@ -902,7 +977,7 @@ export default function SQLSafari({ onScoreChange }: Props) {
               <code className="font-mono text-[9px] text-green-success block leading-relaxed">
                 cursor.execute(
                 <br />
-                &nbsp;&nbsp;&quot;SELECT * FROM users WHERE name = %s&quot;,
+                {`  "SELECT * FROM ${tableName} WHERE name = %s",`}
                 <br />
                 &nbsp;&nbsp;(user_input,)
                 <br />

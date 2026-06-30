@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import type { OpsContextProps } from '@/lib/opsContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Binary, KeyRound, ArrowRight, RefreshCw, Trophy, Zap,
@@ -6,7 +7,7 @@ import {
   Type, Hash, FileCode, Sparkles, AlertTriangle, Check
 } from 'lucide-react';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -47,9 +48,19 @@ const EDUCATION_TIPS = [
   { title: 'Key Reuse Attack', text: 'If you reuse a key: C1 XOR C2 = P1 XOR P2. This leaks information about both plaintexts!' },
 ];
 
-export default function XORTool({ onScoreChange }: Props) {
-  const [plaintext, setPlaintext] = useState('HELLO');
-  const [key, setKey] = useState('KEY');
+export default function XORTool({ onScoreChange, opsContext }: Props) {
+  const initialPlaintext = opsContext?.target.apiKeyName.slice(0, 16) ?? 'HELLO';
+  const initialKey = opsContext?.target.xorKey ?? 'KEY';
+  const cribWords = useMemo(() => opsContext ? [
+    opsContext.target.rootDomain.split('.')[0],
+    opsContext.target.sessionCookieName.slice(0, 8),
+    opsContext.target.adminUser.split('.')[0],
+    opsContext.target.databaseName.split('_')[0],
+    'key',
+    'data',
+  ] : CRIB_WORDS, [opsContext]);
+  const [plaintext, setPlaintext] = useState(initialPlaintext);
+  const [key, setKey] = useState(initialKey);
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('hex');
   const [mode, setMode] = useState<XorMode>('repeated');
   const [score, setScore] = useState(0);
@@ -77,8 +88,8 @@ export default function XORTool({ onScoreChange }: Props) {
   };
 
   const handleReset = () => {
-    setPlaintext('HELLO');
-    setKey('KEY');
+    setPlaintext(initialPlaintext);
+    setKey(initialKey);
     setAttackResult(null);
     setBrokenKey(false);
     setShowSuccess(false);
@@ -92,14 +103,14 @@ export default function XORTool({ onScoreChange }: Props) {
 
     let step = 0;
     const interval = setInterval(() => {
-      if (step >= CRIB_WORDS.length) {
+      if (step >= cribWords.length) {
         clearInterval(interval);
         setAttackInProgress(false);
         setAttackResult('Attack complete. No definite crib match found in this demo.');
         return;
       }
 
-      const crib = CRIB_WORDS[step];
+      const crib = cribWords[step];
       // Simulate crib drag: XOR ciphertext with crib at various positions
       const decrypted = [];
       for (let i = 0; i < Math.min(plaintext.length, crib.length); i++) {
@@ -147,16 +158,21 @@ export default function XORTool({ onScoreChange }: Props) {
           </div>
           <div>
             <h2 className="text-2xl font-fredoka text-purple-darker text-outline-sm">XOR Tool</h2>
-            <p className="text-sm text-purple-dark font-nunito">Visualize XOR encryption in real-time!</p>
+            <p className="text-sm text-purple-dark font-nunito">Visualize XOR against the active target proof.</p>
+            {opsContext && (
+              <p className="font-mono text-[10px] font-bold text-purple-primary">{opsContext.target.primaryDomain} / {opsContext.target.apiKeyName}</p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="bg-yellow-accent px-4 py-2 rounded-2xl border-4 border-black flex items-center gap-2">
             <Trophy size={20} strokeWidth={3} />
+            <span className="font-nunito text-[10px] font-black">Score:</span>
             <span className="font-fredoka text-lg">{score}</span>
           </div>
           <div className="bg-purple-primary px-4 py-2 rounded-2xl border-4 border-black flex items-center gap-2 text-white">
             <Zap size={20} strokeWidth={3} />
+            <span className="font-nunito text-[10px] font-black">Runs:</span>
             <span className="font-fredoka text-lg">{operationsCount}</span>
           </div>
           <button onClick={handleReset} className="p-2 bg-purple-light rounded-2xl border-4 border-black hover:bg-purple-primary transition-colors">

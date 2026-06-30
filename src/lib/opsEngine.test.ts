@@ -10,6 +10,10 @@ import {
   getToolOpsProfile,
   resolveOpsAction,
 } from './opsEngine';
+import {
+  createOpsTargetProfile,
+  createOpsToolContext,
+} from './opsContext';
 
 const lowDefenseTarget: BattleTarget = {
   userId: -100,
@@ -280,5 +284,42 @@ describe('ordered ops simuletool chains', () => {
       expect(progress.completedSteps).toHaveLength(objective.steps.length);
       expect(getRecommendedTools(getNextOpsStep(objective, progress), progress)).toEqual([]);
     }
+  });
+});
+
+describe('target-bound VS operation context', () => {
+  it('generates deterministic fake platform assets from the active target', () => {
+    const first = createOpsTargetProfile(lowDefenseTarget);
+    const second = createOpsTargetProfile(lowDefenseTarget);
+
+    expect(first).toEqual(second);
+    expect(first.platformName).toBe('Test Target Portal');
+    expect(first.primaryDomain).toBe('app.test-target.ops');
+    expect(first.databaseName).toBe('test_target_customer_vault');
+    expect(first.certificate.subject).toContain(first.primaryDomain);
+    expect(first.services.map((service) => service.host)).toContain(first.hosts.api);
+  });
+
+  it('builds objective-specific proof cards from the same target context', () => {
+    const objective = OPS_OBJECTIVES.find((item) => item.id === 'database-leak');
+    expect(objective).toBeDefined();
+    const step = objective!.steps[0];
+    const chain = getStepToolChainItems(step);
+
+    const context = createOpsToolContext({
+      target: lowDefenseTarget,
+      objective: objective!,
+      step,
+      tool: chain[0].tool,
+      chainPosition: 1,
+      chainTotal: chain.length,
+    });
+
+    expect(context.contract.expectedProof).toContain('app.test-target.ops');
+    expect(context.contract.expectedProof).toContain('test-target.ops');
+    expect(context.contract.options.some((option) => option.correct)).toBe(true);
+    expect(context.contract.options.some((option) => !option.correct)).toBe(true);
+    expect(context.contract.options.every((option) => !option.label.includes('google.com'))).toBe(true);
+    expect(context.contract.options.every((option) => !option.label.includes('github.com'))).toBe(true);
   });
 });

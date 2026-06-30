@@ -9,11 +9,38 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const baseUrl = (process.env.AUDIT_BASE_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
 const chromeCandidates = [
   process.env.CHROME_BIN,
+  process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Google/Chrome/Application/chrome.exe') : undefined,
+  process.env.PROGRAMFILES ? join(process.env.PROGRAMFILES, 'Google/Chrome/Application/chrome.exe') : undefined,
+  process.env['PROGRAMFILES(X86)'] ? join(process.env['PROGRAMFILES(X86)'], 'Google/Chrome/Application/chrome.exe') : undefined,
+  process.env.PROGRAMFILES ? join(process.env.PROGRAMFILES, 'Microsoft/Edge/Application/msedge.exe') : undefined,
+  process.env['PROGRAMFILES(X86)'] ? join(process.env['PROGRAMFILES(X86)'], 'Microsoft/Edge/Application/msedge.exe') : undefined,
   '/snap/bin/chromium',
   '/usr/bin/chromium',
   '/usr/bin/chromium-browser',
   '/usr/bin/google-chrome',
 ].filter(Boolean);
+
+const auditTarget = {
+  platformName: 'Audit Target Portal',
+  orgName: 'Audit Target Labs',
+  primaryDomain: 'app.audit-target.ops',
+  rootDomain: 'audit-target.ops',
+  vendorName: 'Audit Target Partner Mesh',
+  vendorDomain: 'vendor.audit-target.ops',
+  oldDomain: 'old.audit-target.ops',
+  apiName: 'Audit Target Ops API',
+  apiDomain: 'api.audit-target.ops',
+  dataName: 'Audit Target Portal Data',
+  webName: 'Audit Target Portal Web',
+  appName: 'Audit Target Portal App',
+  sessionCookieName: 'audit_target_sid',
+  xorKey: 'AUDI4',
+  phishFrom: 'security@login-audit-target-ops.ops',
+  phishDetectiveFrom: 'Audit Target Portal Security',
+  phishDetectiveSubject: 'Audit Target Portal: urgent session reset',
+  certSubject: 'CN=app.audit-target.ops, O=Audit Target Labs, C=US',
+  certIssuer: 'Audit Target Trust Lab CA',
+};
 
 async function findChrome() {
   for (const candidate of chromeCandidates) {
@@ -245,15 +272,42 @@ async function main() {
       throw new Error(`Timed out waiting for ${description}.\n${snapshot}`);
     }
 
+    const textAliases = {
+      'cyberpaws.kids': [auditTarget.primaryDomain],
+      'www.cyberpaws.kids': [auditTarget.certSubject, auditTarget.primaryDomain],
+      'google.com': [auditTarget.vendorDomain],
+      'github.com': [auditTarget.oldDomain],
+      Google: [auditTarget.appName],
+      YouTube: [auditTarget.apiName],
+      'Easy Start': [`${auditTarget.platformName} Admin Hint`],
+      'old-site.example': [auditTarget.oldDomain],
+      'Web Server': [auditTarget.webName],
+      'Bank Server': [auditTarget.dataName, auditTarget.webName],
+      'PayPal Security Team': [auditTarget.phishDetectiveFrom],
+      'Urgent: Your account has been compromised!': [auditTarget.phishDetectiveSubject],
+      'bank@secure-login.com': [auditTarget.phishFrom],
+      'CyberPaws CA': [auditTarget.certIssuer],
+      'Jan 1, 2025': ['2026-02-01'],
+      'Jan 1, 2026': ['2027-02-01'],
+      HELLO: [auditTarget.xorKey],
+      CYBER: [auditTarget.xorKey],
+      SECRET: [auditTarget.xorKey],
+      PAWS: [auditTarget.rootDomain.split('.')[0].replace(/-/g, '_').toUpperCase()],
+    };
+
+    function clickCandidates(text) {
+      return [text, ...(textAliases[text] ?? [])];
+    }
+
     async function clickByText(text, exact = false) {
       const clicked = await evaluate(`
         (() => {
-          const expected = ${JSON.stringify(text)};
+          const candidates = ${JSON.stringify(clickCandidates(text))};
           const exact = ${JSON.stringify(exact)};
           const nodes = [...document.querySelectorAll('button, a')];
           const node = nodes.find((item) => {
             const label = (item.innerText || item.textContent || '').replace(/\\s+/g, ' ').trim();
-            return exact ? label === expected : label.includes(expected);
+            return candidates.some((expected) => exact ? label === expected : label.includes(expected));
           });
           if (!node) return false;
           node.scrollIntoView({ block: 'center', inline: 'center' });
@@ -270,12 +324,12 @@ async function main() {
     async function clickModalText(text, exact = false) {
       const clicked = await evaluate(`
         (() => {
-          const expected = ${JSON.stringify(text)};
+          const candidates = ${JSON.stringify(clickCandidates(text))};
           const exact = ${JSON.stringify(exact)};
           const nodes = [...document.querySelectorAll('.fixed button, .fixed a')];
           const node = nodes.find((item) => {
             const label = (item.innerText || item.textContent || '').replace(/\\s+/g, ' ').trim();
-            return exact ? label === expected : label.includes(expected);
+            return candidates.some((expected) => exact ? label === expected : label.includes(expected));
           });
           if (!node) return false;
           node.scrollIntoView({ block: 'center', inline: 'center' });
@@ -341,10 +395,12 @@ async function main() {
             ? text.slice(gateStart, gateEnd > gateStart ? gateEnd : gateStart + 700)
             : text;
           const scoreMatch = gateText.match(/(\\d+)\\/100/);
+          const proofMatch = gateText.match(/Proof\\s+(\\d+)\\/100/);
           const commit = [...document.querySelectorAll('button')].find((button) => /Commit Segment|Complete VS Step/.test(button.innerText));
           return {
             openedTool: ${JSON.stringify(openedTool)},
             score: scoreMatch ? Number(scoreMatch[1]) : null,
+            proofScore: proofMatch ? Number(proofMatch[1]) : null,
             commitText: commit ? commit.innerText.replace(/\\s+/g, ' ').trim() : null,
             commitDisabled: commit ? Boolean(commit.disabled) : null,
             fallbackVisible: text.includes('Ops Circuit'),
@@ -354,16 +410,56 @@ async function main() {
       `);
     }
 
+    async function selectTargetProof(label) {
+      await waitFor(`${label} target proof visible`, `
+        (() => {
+          const text = document.body.innerText.replace(/\\s+/g, ' ');
+          return text.includes('Target Proof') &&
+            text.includes(${JSON.stringify(auditTarget.primaryDomain)}) &&
+            text.includes(${JSON.stringify(auditTarget.rootDomain)});
+        })()
+      `, 8000);
+
+      const result = await evaluate(`
+        (() => {
+          const modal = document.querySelector('.fixed');
+          const text = modal?.innerText || '';
+          const forbidden = ['CyberPaws Academy', 'Google LLC', 'GitHub Inc.', 'PayPal Security Team', 'bank@secure-login.com', 'CatLover99', 'HackerPaw', 'GitHubRocks999', 'target-site.com'];
+          const leaked = forbidden.filter((item) => text.includes(item));
+          const buttons = [...document.querySelectorAll('.fixed button[data-ops-proof="correct"]')]
+            .filter((button) => button.dataset.opsProofSelected !== 'true');
+          buttons.forEach((button) => {
+            button.scrollIntoView({ block: 'center', inline: 'center' });
+            button.click();
+          });
+          return { clicked: buttons.length, leaked };
+        })()
+      `);
+      if (result?.leaked?.length) {
+        const snapshot = await pageSnapshot(evaluate);
+        throw new Error(`${label} leaked training-only text in VS modal: ${result.leaked.join(', ')}\n${snapshot}`);
+      }
+      await waitFor(`${label} proof selection ready`, `
+        (() => {
+          const correct = [...document.querySelectorAll('.fixed button[data-ops-proof="correct"]')];
+          return correct.length > 0 && correct.every((button) => button.dataset.opsProofSelected === 'true');
+        })()
+      `, 8000);
+    }
+
     async function assertSubmittable(state, label, expectedSubmit = 'Complete VS Step') {
+      await selectTargetProof(label);
+      const latest = await readModalState(state.openedTool);
       if (
-        !state.modalVisible ||
-        state.fallbackVisible ||
-        state.commitText !== expectedSubmit ||
-        state.commitDisabled ||
-        (state.score !== null && state.score < 50)
+        !latest.modalVisible ||
+        latest.fallbackVisible ||
+        latest.commitText !== expectedSubmit ||
+        latest.commitDisabled ||
+        (latest.score !== null && latest.score < 50) ||
+        (latest.proofScore !== null && latest.proofScore < 60)
       ) {
         const snapshot = await pageSnapshot(evaluate);
-        throw new Error(`${label} modal did not become submittable: ${JSON.stringify(state)}\n${snapshot}`);
+        throw new Error(`${label} modal did not become submittable: ${JSON.stringify(latest)}\n${snapshot}`);
       }
       console.error(`[audit] ${label} modal is submittable`);
     }
@@ -458,12 +554,12 @@ async function main() {
     async function clickModalElementText(text, exact = false) {
       const clicked = await evaluate(`
         (() => {
-          const expected = ${JSON.stringify(text)};
+          const candidates = ${JSON.stringify(clickCandidates(text))};
           const exact = ${JSON.stringify(exact)};
           const nodes = [...document.querySelectorAll('.fixed button, .fixed [role="button"], .fixed div, .fixed p, .fixed span')];
           const node = nodes.find((item) => {
             const label = (item.innerText || item.textContent || '').replace(/\\s+/g, ' ').trim();
-            return exact ? label === expected : label.includes(expected);
+            return candidates.some((expected) => exact ? label === expected : label.includes(expected));
           });
           if (!node) return false;
           node.scrollIntoView({ block: 'center', inline: 'center' });
@@ -479,50 +575,63 @@ async function main() {
 
     async function runWhoisLookup(label, minScore = 40) {
       await clickModalText('Correlate timestamps before taking the next action', true);
-      await clickModalText('cyberpaws.kids');
-      await waitFor(`${label} first WHOIS lookup`, `Boolean(document.body?.innerText.includes('CyberPaws Academy') && document.body?.innerText.includes('Lookups: 1'))`, 12000);
-      await clickModalText('google.com');
+      await fillFirstVisibleInput(auditTarget.primaryDomain, 'text');
+      await clickModalText('LOOKUP', true);
+      await waitFor(`${label} first WHOIS lookup`, `Boolean(document.body?.innerText.includes('Audit Target Labs') && document.body?.innerText.includes('Lookups: 1'))`, 12000);
+      await fillFirstVisibleInput(auditTarget.vendorDomain, 'text');
+      await clickModalText('LOOKUP', true);
       await waitFor(`${label} WHOIS baseline ready`, `
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
-          return text.includes('Google LLC') &&
-            text.includes('Score: 40') &&
-            (text.includes('Operation run is strong enough') || ${JSON.stringify(minScore > 40)});
+          return text.includes('Audit Target Partner Mesh') &&
+            text.includes('Score: 40');
         })()
       `, 12000);
       if (minScore > 40) {
-        await clickModalText('github.com');
+        await fillFirstVisibleInput(auditTarget.oldDomain, 'text');
+        await clickModalText('LOOKUP', true);
         await waitFor(`${label} WHOIS score ready`, `
           (() => {
             const text = document.body.innerText.replace(/\\s+/g, ' ');
-            return text.includes('GitHub Inc.') &&
+            return text.includes('Audit Target Labs Legacy') &&
               text.includes('Lookups: 3') &&
-              /Score:\\s*(6[0-9]|[7-9][0-9]|100)/.test(text) &&
-              text.includes('Operation run is strong enough');
+              /Score:\\s*(6[0-9]|[7-9][0-9]|100)/.test(text);
           })()
         `, 12000);
       }
     }
 
+    async function resolveAuditDns(label) {
+      await fillModalField(auditTarget.primaryDomain, auditTarget.primaryDomain);
+      await clickModalText('RESOLVE', true);
+      await waitFor(`${label} DNS trace controls loaded`, `
+        (() => {
+          const text = document.body.innerText.replace(/\\s+/g, ' ');
+          return text.includes('DNS Resolution Path') &&
+            text.includes('Trace Path') &&
+            text.includes(${JSON.stringify(auditTarget.primaryDomain)});
+        })()
+      `, 12000);
+    }
+
     async function runDnsLookupGui(label, includeFirewallCounter = false) {
       await clickModalText('Correlate timestamps before taking the next action', true);
       if (includeFirewallCounter) await clickModalText('Shape traffic through the allowed service lane', true);
-      await clickModalText('cyberpaws.kids');
+      await resolveAuditDns(label);
       for (let i = 1; i <= 4; i++) {
         await clickModalText('Trace Path');
         await waitFor(`${label} DNS trace ${i}/4 complete`, `
           (() => {
             const text = document.body.innerText.replace(/\\s+/g, ' ');
             return text.includes('Lookups: ${i}') &&
-              text.includes('DNS Records for cyberpaws.kids');
+              text.includes('DNS Records for app.audit-target.ops');
           })()
         `, 12000);
       }
       await waitFor(`${label} DNS score ready`, `
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
-          return text.includes('Score: 60') &&
-            text.includes('Operation run is strong enough');
+          return text.includes('Score: 60');
         })()
       `, 12000);
     }
@@ -539,8 +648,7 @@ async function main() {
       await waitFor(`${label} Nmap score ready`, `
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
-          return text.includes('Scans: 2') &&
-            text.includes('Operation run is strong enough');
+          return text.includes('Scans: 2');
         })()
       `, 45000);
     }
@@ -548,7 +656,7 @@ async function main() {
     async function runProxySimulation(label, counters = ['Correlate timestamps before taking the next action']) {
       for (const counter of counters) await clickModalText(counter, true);
       await clickModalText('Start Simulation');
-      await waitFor(`${label} proxy game ready`, `Boolean(document.body?.innerText.includes('Forward Proxy Mode') && document.body?.innerText.includes('Click a website to request'))`);
+      await waitFor(`${label} proxy game ready`, `Boolean(document.body?.innerText.includes('Forward Proxy Mode') && (document.body?.innerText.includes('Click a website to request') || document.body?.innerText.includes('Click a target service to request')))`);
       await clickModalText('Google');
       await waitFor(`${label} proxy first request complete`, `
         (() => {
@@ -575,8 +683,7 @@ async function main() {
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
           return text.includes('Score: 50') &&
-            text.includes('Cache HIT') &&
-            text.includes('Operation run is strong enough');
+            text.includes('Cache HIT');
         })()
       `, 12000);
     }
@@ -593,8 +700,7 @@ async function main() {
       await waitFor(`${label} Trojan assembly ready`, `
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
-          return text.includes('All component types assembled!') &&
-            text.includes('Operation run is strong enough');
+          return text.includes('All component types assembled!');
         })()
       `, 12000);
       await clickModalText('Test Against Defenses');
@@ -603,8 +709,7 @@ async function main() {
       await waitFor(`${label} Trojan test result`, `
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
-          return (text.includes('Detected by:') || text.includes('Trojan evaded all defenses!')) &&
-            text.includes('Operation run is strong enough');
+          return (text.includes('Detected by:') || text.includes('Trojan evaded all defenses!'));
         })()
       `, 12000);
     }
@@ -620,13 +725,12 @@ async function main() {
       await clickModalText('Next Level');
       await waitFor(`${label} encryption level 2 ready`, `Boolean(document.body?.innerText.includes('Level 2: XOR Encryption'))`);
       await clickModalText('CYBER', true);
-      await fillFirstVisibleInput('SECRET', 'text');
+      await fillFirstVisibleInput(auditTarget.xorKey, 'text');
       await clickModalText('Encrypt & Decrypt');
       await waitFor(`${label} encryption level 2 score ready`, `
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
-          return text.includes('Score: 40') &&
-            (text.includes('Operation run is strong enough') || ${JSON.stringify(minScore > 40)});
+          return /Score:\\s*(4[0-9]|[5-9][0-9]|100)/.test(text);
         })()
       `, 12000);
       if (minScore > 40) {
@@ -638,8 +742,7 @@ async function main() {
           (() => {
             const text = document.body.innerText.replace(/\\s+/g, ' ');
             return text.includes('Score: 60') &&
-              text.includes('Success! Decrypted correctly') &&
-              text.includes('Operation run is strong enough');
+              text.includes('Success! Decrypted correctly');
           })()
         `, 12000);
       }
@@ -652,9 +755,8 @@ async function main() {
       await waitFor(`${label} cert viewer score ready`, `
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
-          return text.includes('old-site.example') &&
-            text.includes('Issues Found:') &&
-            text.includes('Operation run is strong enough');
+          return text.includes(${JSON.stringify(auditTarget.oldDomain)}) &&
+            text.includes('Issues Found:');
         })()
       `, 12000);
     }
@@ -662,7 +764,7 @@ async function main() {
     async function runLogAnalyzer(label, counters = ['Correlate timestamps before taking the next action']) {
       for (const counter of counters) await clickModalText(counter, true);
       await clickModalText('The Brute');
-      await waitFor(`${label} log case ready`, `Boolean(document.body?.innerText.includes('Case 1: The Brute') && document.body?.innerText.includes('Solve the Case'))`, 12000);
+      await waitFor(`${label} log case ready`, `Boolean(document.body?.innerText.includes('Case 1:') && document.body?.innerText.includes('The Brute') && document.body?.innerText.includes('Solve the Case'))`, 12000);
       await clickModalText('Auto-Flag Pattern');
       await waitFor(`${label} log pattern flagged`, `
         (() => {
@@ -677,8 +779,7 @@ async function main() {
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
           return text.includes('Case Solved!') &&
-            text.includes('A brute force attack happens') &&
-            text.includes('Operation run is strong enough');
+            text.includes('A brute force attack happens');
         })()
       `, 12000);
     }
@@ -695,8 +796,7 @@ async function main() {
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
           return text.includes('Level 1 Complete!') &&
-            text.includes('Score: 100') &&
-            text.includes('Operation run is strong enough');
+            text.includes('Score: 100');
         })()
       `, 12000);
     }
@@ -721,8 +821,7 @@ async function main() {
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
           return text.includes('VPN Active!') &&
-            text.includes('Score: 100') &&
-            text.includes('Operation run is strong enough');
+            text.includes('Score: 100');
         })()
       `, 12000);
     }
@@ -755,8 +854,7 @@ async function main() {
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
           return text.includes('Score: 100') &&
-            text.includes('Good routing') &&
-            text.includes('Operation run is strong enough');
+            text.includes('Good routing');
         })()
       `, 12000);
     }
@@ -772,8 +870,7 @@ async function main() {
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
           return text.includes('Domain resolved!') &&
-            text.includes('192.168.42.100') &&
-            text.includes('Operation run is strong enough');
+            text.includes('app.audit-target.ops');
         })()
       `, 12000);
     }
@@ -826,8 +923,7 @@ async function main() {
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
           return text.includes('Score: 100%') &&
-            text.includes('Level Complete!') &&
-            text.includes('Operation run is strong enough');
+            text.includes('Level Complete!');
         })()
       `, 20000);
     }
@@ -842,8 +938,7 @@ async function main() {
       await waitFor(`${label} phishing detective score ready`, `
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
-          return text.includes('Correct! Good detective work!') &&
-            text.includes('Operation run is strong enough');
+          return text.includes('Correct! Good detective work!');
         })()
       `, 12000);
     }
@@ -852,7 +947,7 @@ async function main() {
       await clickModalText('Stay on the active app surface and verify behavior', true);
       await clickModalText('Stage only the safe lab payload and monitor response', true);
       await clickModalText('Validate the human clue against a second signal', true);
-      await fillModalField('bank@secure.com', 'security@audit-bank.example');
+      await fillModalField('security@audit-target.ops', 'security@login-audit-target-ops.ops');
       await fillModalField('URGENT: Action required!', 'Quarterly account verification');
       await fillModalField('Write your email body...', 'Please verify the account workflow in this training lab before the simulated review window closes.', 'textarea');
       await clickModalText('Urgency OFF');
@@ -861,8 +956,7 @@ async function main() {
       await waitFor(`${label} phishing builder score ready`, `
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
-          return text.includes('Convincing Score: 50/50') &&
-            text.includes('Operation run is strong enough');
+          return text.includes('Convincing Score: 50/50');
         })()
       `, 12000);
       await clickModalText('bank@secure-login.com');
@@ -871,8 +965,7 @@ async function main() {
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
           return text.includes('CORRECT!') &&
-            text.includes('This is a phishing email') &&
-            text.includes('Operation run is strong enough');
+            text.includes('This is a phishing email');
         })()
       `, 12000);
     }
@@ -903,8 +996,7 @@ async function main() {
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
           return text.includes('Level 1 Complete!') &&
-            text.includes('Score: 100') &&
-            text.includes('Operation run is strong enough');
+            text.includes('Score: 100');
         })()
       `, 12000);
     }
@@ -939,7 +1031,7 @@ async function main() {
     async function runFirewallDefender(label) {
       await clickModalText('Stage only the safe lab payload and monitor response', true);
       await clickModalText('Start Defense');
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 5; i++) {
         await waitFor(`${label} firewall packet ${i + 1}`, `
           Boolean(document.querySelector('.fixed .absolute.top-0 button'))
         `, 30000);
@@ -950,8 +1042,7 @@ async function main() {
       await waitFor(`${label} firewall score ready`, `
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
-          return text.includes('Score: 40') &&
-            text.includes('Operation run is strong enough');
+          return /Score:\\s*(4[0-9]|[5-9][0-9]|100)/.test(text);
         })()
       `, 12000);
     }
@@ -959,11 +1050,11 @@ async function main() {
     async function clickCertPiece(value) {
       const clicked = await evaluate(`
         (() => {
-          const value = ${JSON.stringify(value)};
+          const values = ${JSON.stringify(clickCandidates(value))};
           const buttons = [...document.querySelectorAll('.fixed button')];
           const button = buttons.find((candidate) => {
             const label = (candidate.innerText || candidate.textContent || '').replace(/\\s+/g, ' ').trim();
-            return label === value;
+            return values.includes(label);
           });
           if (!button) return false;
           button.scrollIntoView({ block: 'center', inline: 'center' });
@@ -1020,8 +1111,7 @@ async function main() {
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
           return text.includes('Level 1 Complete!') &&
-            text.includes('Certificate assembled successfully!') &&
-            text.includes('Operation run is strong enough');
+            text.includes('Certificate assembled successfully!');
         })()
       `, 12000);
     }
@@ -1063,10 +1153,10 @@ async function main() {
     console.error('[audit] modal ready');
     await clickByText('Shape traffic through the allowed service lane', true);
     await clickByText('Correlate timestamps before taking the next action', true);
-    await clickByText('cyberpaws.kids');
+    await resolveAuditDns('Initial DNS lookup');
     await waitFor('trace button', `Boolean(document.body?.innerText.includes('DNS Resolution Path') && document.body?.innerText.includes('Trace Path'))`);
     for (let trace = 1; trace <= 4; trace++) {
-      await clickByText('Trace Path');
+      await clickModalText('Trace Path');
       console.error(`[audit] DNS trace ${trace}/4 running`);
       await sleep(4300);
     }
@@ -1091,17 +1181,7 @@ async function main() {
         };
       })()
     `);
-
-    if (
-      !modalState.modalVisible ||
-      modalState.fallbackVisible ||
-      modalState.commitDisabled ||
-      (modalState.score !== null && modalState.score < 50)
-    ) {
-      const snapshot = await pageSnapshot(evaluate);
-      throw new Error(`Ops modal did not become submittable: ${JSON.stringify(modalState)}\n${snapshot}`);
-    }
-    console.error('[audit] modal is submittable');
+    await assertSubmittable(modalState, 'Initial DNS lookup', 'Commit Segment');
 
     await evaluate(`
       (() => {
@@ -1132,7 +1212,7 @@ async function main() {
     console.error('[audit] Nmap modal ready');
     await clickByText('Shape traffic through the allowed service lane', true);
     await clickByText('Correlate timestamps before taking the next action', true);
-    await clickByText('Bank Server');
+    await clickModalText('Bank Server');
     await clickByText('Full Scan');
     await clickByText('LAUNCH SCAN');
     console.error('[audit] Nmap full scan running');
@@ -1158,18 +1238,7 @@ async function main() {
         };
       })()
     `);
-
-    if (
-      !nmapModalState.modalVisible ||
-      nmapModalState.fallbackVisible ||
-      nmapModalState.commitText !== 'Complete VS Step' ||
-      nmapModalState.commitDisabled ||
-      (nmapModalState.score !== null && nmapModalState.score < 50)
-    ) {
-      const snapshot = await pageSnapshot(evaluate);
-      throw new Error(`Nmap modal did not become submittable: ${JSON.stringify(nmapModalState)}\n${snapshot}`);
-    }
-    console.error('[audit] Nmap modal is submittable');
+    await assertSubmittable(nmapModalState, 'Initial Nmap');
 
     await evaluate(`
       (() => {
@@ -1197,7 +1266,14 @@ async function main() {
     await clickByText("' OR '1'='1");
     await waitFor('SQL Safari payload selected', `Boolean(document.body?.innerText.includes('Run Query'))`);
     await clickByText('Run Query');
-    await waitFor('SQL Safari score ready', `Boolean(document.body?.innerText.includes('Injection Detected!') && document.body?.innerText.includes('Operation run is strong enough'))`);
+    await waitFor('SQL Safari level 1 result', `Boolean(document.body?.innerText.includes('Injection Detected!') && document.body?.innerText.includes('Next Level') || document.body?.innerText.includes('Learn More'))`);
+    await clickModalText('Learn More');
+    await waitFor('SQL Safari next level button', `Boolean(document.body?.innerText.includes('Next Level'))`);
+    await clickModalText('Next Level');
+    await waitFor('SQL Safari level 2 ready', `Boolean(document.body?.innerText.includes('Union Strike') && document.body?.innerText.includes('Payloads:'))`);
+    await clickModalText(`' UNION SELECT * FROM audit_target_customer_vault_secrets--`, true);
+    await clickModalText('Run Query');
+    await waitFor('SQL Safari score ready', `Boolean(document.body?.innerText.includes('Injection Detected!'))`);
     const sqlSafariState = await readModalState(openedSqlSafari);
     await assertSubmittable(sqlSafariState, 'SQL Safari');
     await submitStep();
@@ -1217,7 +1293,7 @@ async function main() {
     await clickByText('Pick the smallest scoped fix path before retrying', true);
     await clickByText('Correlate timestamps before taking the next action', true);
     await clickByText('Classic OR 1=1');
-    await waitFor('SQL Injector vulnerable result', `Boolean(document.body?.innerText.includes('VULNERABLE!') && document.body?.innerText.includes('Operation run is strong enough'))`, 12000);
+    await waitFor('SQL Injector vulnerable result', `Boolean(document.body?.innerText.includes('VULNERABLE!'))`, 12000);
     const sqlInjectorState = await readModalState(openedSqlInjector);
     await assertSubmittable(sqlInjectorState, 'SQL Injector');
     await submitStep();
@@ -1244,9 +1320,9 @@ async function main() {
     await clickByText('Next Level');
     await waitFor('Encryption Pipeline level 2 ready', `Boolean(document.body?.innerText.includes('Level 2: XOR Encryption'))`);
     await clickByText('CYBER', true);
-    await fillFirstVisibleInput('SECRET', 'text');
+    await fillFirstVisibleInput(auditTarget.xorKey, 'text');
     await clickByText('Encrypt & Decrypt');
-    await waitFor('Encryption Pipeline score ready', `Boolean(document.body?.innerText.includes('Score: 40') && document.body?.innerText.includes('Operation run is strong enough'))`, 12000);
+    await waitFor('Encryption Pipeline score ready', `Boolean(document.body?.innerText.includes('Score: 40'))`, 12000);
     const encryptionState = await readModalState(openedEncryption);
     await assertSubmittable(encryptionState, 'Encryption Pipeline');
     await submitStep();
@@ -1274,15 +1350,16 @@ async function main() {
     const openedWhois = await openQueuedTool('Whois Lookup');
     await waitFor('WHOIS Lookup modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Counter Stack'))`);
     await clickByText('Correlate timestamps before taking the next action', true);
-    await clickByText('cyberpaws.kids');
-    await waitFor('WHOIS first lookup', `Boolean(document.body?.innerText.includes('CyberPaws Academy') && document.body?.innerText.includes('Lookups: 1'))`, 12000);
-    await clickByText('google.com');
+    await fillFirstVisibleInput(auditTarget.primaryDomain, 'text');
+    await clickModalText('LOOKUP', true);
+    await waitFor('WHOIS first lookup', `Boolean(document.body?.innerText.includes('Audit Target Labs') && document.body?.innerText.includes('Lookups: 1'))`, 12000);
+    await fillFirstVisibleInput(auditTarget.vendorDomain, 'text');
+    await clickModalText('LOOKUP', true);
     await waitFor('WHOIS score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('Google LLC') &&
-          text.includes('Score: 40') &&
-          text.includes('Operation run is strong enough');
+        return text.includes('Audit Target Partner Mesh') &&
+          text.includes('Score: 40');
       })()
     `, 12000);
     const whoisState = await readModalState(openedWhois);
@@ -1305,14 +1382,14 @@ async function main() {
     await clickByText('Reduce suspicious behavior and isolate the lab process', true);
     await clickByText('Correlate timestamps before taking the next action', true);
     await clickByText('Easy Start');
-    await waitFor('Hash challenge loaded', `Boolean(document.body?.innerText.includes('5f4dcc3b5aa765d61d8327deb882cf99') && document.body?.innerText.includes('START CRACKING'))`);
+    await sleep(500);
     await clickByText('START CRACKING');
     await waitFor('Hash Cracker score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return text.includes('Password:') &&
-          text.includes('password') &&
-          text.includes('Operation run is strong enough');
+          text.includes('Hashes Cracked: 1/3') &&
+          text.includes('Progress 100%');
       })()
     `, 45000);
     const hashState = await readModalState(openedHash);
@@ -1341,8 +1418,7 @@ async function main() {
     await waitFor('SSL Handshake score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('Level 1 Complete!') &&
-          text.includes('Operation run is strong enough');
+        return text.includes('Level 1 Complete!');
       })()
     `, 12000);
     const sslState = await readModalState(openedSsl);
@@ -1377,8 +1453,7 @@ async function main() {
     await waitFor('Packet Sniffer segment ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('Operation run is strong enough') &&
-          /Total Score\\s+(4[5-9]|[5-9][0-9]|100)/.test(text);
+        return /Total Score\\s+(4[5-9]|[5-9][0-9]|100)/.test(text);
       })()
     `, 45000);
     const packetTracerState = await readModalState(openedPacketTracer);
@@ -1402,9 +1477,8 @@ async function main() {
     await waitFor('Cert Viewer score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('old-site.example') &&
-          text.includes('Issues Found:') &&
-          text.includes('Operation run is strong enough');
+        return text.includes(${JSON.stringify(auditTarget.oldDomain)}) &&
+          text.includes('Issues Found:');
       })()
     `, 12000);
     const certViewerState = await readModalState(openedCertViewer);
@@ -1430,8 +1504,7 @@ async function main() {
     await waitFor('Keylogger Sim score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('Keys Captured') &&
-          text.includes('Operation run is strong enough');
+        return text.includes('Keys Captured');
       })()
     `, 12000);
     const keyloggerState = await readModalState(openedKeylogger);
@@ -1454,35 +1527,34 @@ async function main() {
     await clickByText('Correlate timestamps before taking the next action', true);
     await clickByText('Pick the smallest scoped fix path before retrying', true);
     await clickByText('Start Simulation');
-    await waitFor('Proxy game ready', `Boolean(document.body?.innerText.includes('Forward Proxy Mode') && document.body?.innerText.includes('Click a website to request'))`);
-    await clickByText('Google');
+    await waitFor('Proxy game ready', `Boolean(document.body?.innerText.includes('Forward Proxy Mode') && (document.body?.innerText.includes('Click a website to request') || document.body?.innerText.includes('Click a target service to request')))`);
+    await clickModalText('Google');
     await waitFor('Proxy first request complete', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return text.includes('Score: 10') && text.includes('Cache MISS');
       })()
     `, 12000);
-    await clickByText('Google');
+    await clickModalText('Google');
     await waitFor('Proxy cached request complete', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return text.includes('Score: 25') && text.includes('Cache HIT');
       })()
     `, 12000);
-    await clickByText('YouTube');
+    await clickModalText('YouTube');
     await waitFor('Proxy third request complete', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return text.includes('Score: 35') && text.includes('Cache MISS');
       })()
     `, 12000);
-    await clickByText('YouTube');
+    await clickModalText('YouTube');
     await waitFor('Proxy score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return text.includes('Score: 50') &&
-          text.includes('Cache HIT') &&
-          text.includes('Operation run is strong enough');
+          text.includes('Cache HIT');
       })()
     `, 12000);
     const proxyState = await readModalState(openedProxy);
@@ -1522,8 +1594,7 @@ async function main() {
     await waitFor('Web Nmap score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('Scans: 2') &&
-          text.includes('Operation run is strong enough');
+        return text.includes('Scans: 2');
       })()
     `, 45000);
     const webNmapState = await readModalState(openedWebNmap);
@@ -1557,8 +1628,7 @@ async function main() {
     await waitFor('XSS score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('Sanitized Output:') &&
-          text.includes('Operation run is strong enough');
+        return text.includes('Sanitized Output:');
       })()
     `, 12000);
     const xssTesterState = await readModalState(openedXssTester);
@@ -1590,8 +1660,7 @@ async function main() {
     await waitFor('Trojan assembly ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('All component types assembled!') &&
-          text.includes('Operation run is strong enough');
+        return text.includes('All component types assembled!');
       })()
     `, 12000);
     await clickModalText('Test Against Defenses');
@@ -1600,8 +1669,7 @@ async function main() {
     await waitFor('Trojan test result', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return (text.includes('Detected by:') || text.includes('Trojan evaded all defenses!')) &&
-          text.includes('Operation run is strong enough');
+        return (text.includes('Detected by:') || text.includes('Trojan evaded all defenses!'));
       })()
     `, 12000);
     const trojanState = await readModalState(openedTrojan);
@@ -1632,7 +1700,7 @@ async function main() {
     await waitFor('Phishing Simulator modal', `Boolean(document.body?.innerText.includes('Phishing Simulator') && document.body?.innerText.includes('Counter Stack'))`);
     await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
     await clickModalText('Correlate timestamps before taking the next action', true);
-    await fillModalField('bank@secure.com', 'security@audit-bank.example');
+    await fillModalField('security@audit-target.ops', 'security@login-audit-target-ops.ops');
     await fillModalField('URGENT: Action required!', 'Quarterly account verification');
     await fillModalField('Write your email body...', 'Please verify the account workflow in this training lab before the simulated review window closes.', 'textarea');
     await clickModalText('Urgency OFF');
@@ -1641,8 +1709,7 @@ async function main() {
     await waitFor('Phishing builder score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('Convincing Score: 50/50') &&
-          text.includes('Operation run is strong enough');
+        return text.includes('Convincing Score: 50/50');
       })()
     `, 12000);
     await clickModalText('bank@secure-login.com');
@@ -1651,8 +1718,7 @@ async function main() {
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return text.includes('CORRECT!') &&
-          text.includes('This is a phishing email') &&
-          text.includes('Operation run is strong enough');
+          text.includes('This is a phishing email');
       })()
     `, 12000);
     const deliveryPhishState = await readModalState(openedDeliveryPhish);
@@ -1684,8 +1750,7 @@ async function main() {
     await waitFor('Endpoint Trojan assembly ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('All component types assembled!') &&
-          text.includes('Operation run is strong enough');
+        return text.includes('All component types assembled!');
       })()
     `, 12000);
     await clickModalText('Test Against Defenses');
@@ -1694,8 +1759,7 @@ async function main() {
     await waitFor('Endpoint Trojan test result', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return (text.includes('Detected by:') || text.includes('Trojan evaded all defenses!')) &&
-          text.includes('Operation run is strong enough');
+        return (text.includes('Detected by:') || text.includes('Trojan evaded all defenses!'));
       })()
     `, 12000);
     const endpointTrojanState = await readModalState(openedEndpointTrojan);
@@ -1721,8 +1785,7 @@ async function main() {
     await waitFor('Telemetry Keylogger score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('Keys Captured') &&
-          text.includes('Operation run is strong enough');
+        return text.includes('Keys Captured');
       })()
     `, 12000);
     const telemetryKeyloggerState = await readModalState(openedTelemetryKeylogger);
@@ -1762,8 +1825,7 @@ async function main() {
     await waitFor('Local Trojan assembly ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('All component types assembled!') &&
-          text.includes('Operation run is strong enough');
+        return text.includes('All component types assembled!');
       })()
     `, 12000);
     await clickModalText('Test Against Defenses');
@@ -1772,8 +1834,7 @@ async function main() {
     await waitFor('Local Trojan test result', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return (text.includes('Detected by:') || text.includes('Trojan evaded all defenses!')) &&
-          text.includes('Operation run is strong enough');
+        return (text.includes('Detected by:') || text.includes('Trojan evaded all defenses!'));
       })()
     `, 12000);
     const localTrojanState = await readModalState(openedLocalTrojan);
@@ -1796,7 +1857,7 @@ async function main() {
     await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
     await clickModalText('Pick the smallest scoped fix path before retrying', true);
     await clickModalText('The Brute');
-    await waitFor('Log Analyzer case ready', `Boolean(document.body?.innerText.includes('Case 1: The Brute') && document.body?.innerText.includes('Solve the Case'))`, 12000);
+    await waitFor('Log Analyzer case ready', `Boolean(document.body?.innerText.includes('Case 1:') && document.body?.innerText.includes('The Brute') && document.body?.innerText.includes('Solve the Case'))`, 12000);
     await clickModalText('Auto-Flag Pattern');
     await waitFor('Log Analyzer pattern flagged', `
       (() => {
@@ -1811,8 +1872,7 @@ async function main() {
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return text.includes('Case Solved!') &&
-          text.includes('A brute force attack happens') &&
-          text.includes('Operation run is strong enough');
+          text.includes('A brute force attack happens');
       })()
     `, 12000);
     const logAnalyzerState = await readModalState(openedLogAnalyzer);
@@ -1843,9 +1903,9 @@ async function main() {
     await clickModalText('Next Level');
     await waitFor('Cookie Encryption level 2 ready', `Boolean(document.body?.innerText.includes('Level 2: XOR Encryption'))`);
     await clickModalText('CYBER', true);
-    await fillFirstVisibleInput('SECRET', 'text');
+    await fillFirstVisibleInput(auditTarget.xorKey, 'text');
     await clickModalText('Encrypt & Decrypt');
-    await waitFor('Cookie Encryption score ready', `Boolean(document.body?.innerText.includes('Score: 40') && document.body?.innerText.includes('Operation run is strong enough'))`, 12000);
+    await waitFor('Cookie Encryption score ready', `Boolean(document.body?.innerText.includes('Score: 40'))`, 12000);
     const cookieEncryptionState = await readModalState(openedCookieEncryption);
     await assertSubmittable(cookieEncryptionState, 'Cookie Encryption Pipeline');
     await submitStep();
@@ -1873,15 +1933,16 @@ async function main() {
     const openedApiWhois = await openQueuedTool('Whois Lookup');
     await waitFor('API WHOIS Lookup modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Counter Stack'))`);
     await clickModalText('Correlate timestamps before taking the next action', true);
-    await clickModalText('cyberpaws.kids');
-    await waitFor('API WHOIS first lookup', `Boolean(document.body?.innerText.includes('CyberPaws Academy') && document.body?.innerText.includes('Lookups: 1'))`, 12000);
-    await clickModalText('google.com');
+    await fillFirstVisibleInput(auditTarget.primaryDomain, 'text');
+    await clickModalText('LOOKUP', true);
+    await waitFor('API WHOIS first lookup', `Boolean(document.body?.innerText.includes('Audit Target Labs') && document.body?.innerText.includes('Lookups: 1'))`, 12000);
+    await fillFirstVisibleInput(auditTarget.vendorDomain, 'text');
+    await clickModalText('LOOKUP', true);
     await waitFor('API WHOIS score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('Google LLC') &&
-          text.includes('Score: 40') &&
-          text.includes('Operation run is strong enough');
+        return text.includes('Audit Target Partner Mesh') &&
+          text.includes('Score: 40');
       })()
     `, 12000);
     const apiWhoisState = await readModalState(openedApiWhois);
@@ -1901,22 +1962,21 @@ async function main() {
     const openedApiDns = await openQueuedTool('DNS Lookup GUI');
     await waitFor('API DNS lookup modal', `Boolean(document.body?.innerText.includes('DNS Lookup Tool') && document.body?.innerText.includes('Counter Stack'))`);
     await clickModalText('Correlate timestamps before taking the next action', true);
-    await clickModalText('cyberpaws.kids');
+    await resolveAuditDns('API DNS lookup');
     for (let i = 1; i <= 4; i++) {
       await clickModalText('Trace Path');
       await waitFor(`API DNS trace ${i}/4 complete`, `
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
           return text.includes('Lookups: ${i}') &&
-            text.includes('DNS Records for cyberpaws.kids');
+            text.includes('DNS Records for app.audit-target.ops');
         })()
       `, 12000);
     }
     await waitFor('API DNS score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('Score: 60') &&
-          text.includes('Operation run is strong enough');
+        return text.includes('Score: 60');
       })()
     `, 12000);
     const apiDnsState = await readModalState(openedApiDns);
@@ -1937,11 +1997,11 @@ async function main() {
     const openedXorTool = await openQueuedTool('XOR Tool');
     await waitFor('XOR Tool modal', `Boolean(document.body?.innerText.includes('XOR Tool') && document.body?.innerText.includes('Counter Stack'))`);
     await clickModalText('Pick the smallest scoped fix path before retrying', true);
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       await clickModalText('Run XOR Operation');
       await sleep(80);
     }
-    await waitFor('XOR Tool score ready', `Boolean(document.body?.innerText.includes('Operation run is strong enough'))`, 12000);
+    await sleep(1000);
     const xorToolState = await readModalState(openedXorTool);
     await assertSubmittable(xorToolState, 'XOR Tool', 'Commit Segment');
     await submitStep();
@@ -1960,14 +2020,14 @@ async function main() {
     await waitFor('API Hash Cracker modal', `Boolean(document.body?.innerText.includes('Hash Cracker') && document.body?.innerText.includes('Counter Stack'))`);
     await clickModalText('Pick the smallest scoped fix path before retrying', true);
     await clickModalText('Easy Start');
-    await waitFor('API Hash challenge loaded', `Boolean(document.body?.innerText.includes('5f4dcc3b5aa765d61d8327deb882cf99') && document.body?.innerText.includes('START CRACKING'))`);
+    await sleep(500);
     await clickModalText('START CRACKING');
     await waitFor('API Hash Cracker score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return text.includes('Password:') &&
-          text.includes('password') &&
-          text.includes('Operation run is strong enough');
+          text.includes('Hashes Cracked: 1/3') &&
+          text.includes('Progress 100%');
       })()
     `, 20000);
     const apiHashState = await readModalState(openedApiHash);
@@ -1990,7 +2050,7 @@ async function main() {
     await clickModalText('Correlate timestamps before taking the next action', true);
     await clickModalText('Pick the smallest scoped fix path before retrying', true);
     await clickModalText('Start Simulation');
-    await waitFor('API Proxy game ready', `Boolean(document.body?.innerText.includes('Forward Proxy Mode') && document.body?.innerText.includes('Click a website to request'))`);
+    await waitFor('API Proxy game ready', `Boolean(document.body?.innerText.includes('Forward Proxy Mode') && (document.body?.innerText.includes('Click a website to request') || document.body?.innerText.includes('Click a target service to request')))`);
     await clickModalText('Google');
     await waitFor('API Proxy first request complete', `
       (() => {
@@ -2017,8 +2077,7 @@ async function main() {
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return text.includes('Score: 50') &&
-          text.includes('Cache HIT') &&
-          text.includes('Operation run is strong enough');
+          text.includes('Cache HIT');
       })()
     `, 12000);
     const apiProxyState = await readModalState(openedApiProxy);
@@ -2116,8 +2175,7 @@ async function main() {
     await waitFor('Traffic choke packet score ready', `
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('Operation run is strong enough') &&
-          /Total Score\\s+(4[5-9]|[5-9][0-9]|100)/.test(text);
+        return /Total Score\\s+(4[5-9]|[5-9][0-9]|100)/.test(text);
       })()
     `, 20000);
     const chokeTracerState = await readModalState(openedChokeTracer);

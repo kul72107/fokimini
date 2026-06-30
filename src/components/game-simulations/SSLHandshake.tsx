@@ -1,11 +1,12 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Lock, Shield, Unlock, ArrowRight, ArrowLeft, Check, X,
   RotateCcw, ChevronRight, Trophy, Star, Server, Laptop, Zap
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -70,6 +71,42 @@ const LEVELS: LevelConfig[] = [
   },
 ];
 
+function buildOpsLevels({ target }: NonNullable<OpsContextProps['opsContext']>): LevelConfig[] {
+  return LEVELS.map((level, levelIndex) => ({
+    ...level,
+    name: levelIndex === 0
+      ? `${target.platformName} Basic TLS`
+      : levelIndex === 1
+        ? `${target.platformName} Certificate Flow`
+        : `${target.platformName} Mutual TLS`,
+    description: level.description.replace('SSL', `${target.primaryDomain} TLS`).replace('standard SSL/TLS', `${target.primaryDomain} TLS`),
+    hints: [
+      `Client ${target.ips.client} starts the handshake with ${target.hosts.app}.`,
+      `Server identity must match ${target.certificate.subject}.`,
+      `Trust anchor is ${target.certificate.issuer}.`,
+      `Finish only after the encrypted channel protects ${target.sessionCookieName}.`,
+    ],
+    steps: level.steps.map((step) => ({
+      ...step,
+      detail: step.id === 's1'
+        ? `Client offers TLS options to ${target.primaryDomain}`
+        : step.id === 's2'
+          ? `${target.hosts.app} selects cipher and server random`
+          : step.label === 'Certificate'
+            ? `${target.certificate.subject} issued by ${target.certificate.issuer}`
+            : step.label === 'Cert Request'
+              ? `${target.hosts.app} requests client identity for ${target.adminUser}`
+              : step.label === 'Client Certificate'
+                ? `${target.standardUser} presents a lab client certificate`
+                : step.label === 'Key Exchange'
+                  ? `Pre-master secret protects ${target.apiName}`
+                  : step.label === 'Change Cipher Spec'
+                    ? `Switch traffic for ${target.sessionCookieName} to encrypted mode`
+                    : `Secure channel ready for ${target.platformName}`,
+    })),
+  }));
+}
+
 const STEP_COLORS: Record<string, string> = {
   hello: '#7C3AED',
   cert: '#60A5FA',
@@ -100,7 +137,10 @@ function KeyIcon({ size = 18, color = '#FFFFFF' }: { size?: number; color?: stri
   );
 }
 
-export default function SSLHandshake({ onScoreChange }: Props) {
+export default function SSLHandshake({ onScoreChange, opsContext }: Props) {
+  const levels = useMemo(() => opsContext ? buildOpsLevels(opsContext) : LEVELS, [opsContext]);
+  const clientLabel = opsContext?.target.standardUser ?? 'Client';
+  const serverLabel = opsContext?.target.primaryDomain ?? 'Server';
   const [currentLevel, setCurrentLevel] = useState(0);
   const [orderedSteps, setOrderedSteps] = useState<string[]>([]);
   const [availableSteps, setAvailableSteps] = useState<string[]>([]);
@@ -111,11 +151,11 @@ export default function SSLHandshake({ onScoreChange }: Props) {
   const [message, setMessage] = useState('');
   const [shakeWrong, setShakeWrong] = useState(false);
   const [successArrows, setSuccessArrows] = useState(false);
-  const [levelScores, setLevelScores] = useState<(number | null)[]>([null, null, null]);
-  const [levelStars, setLevelStars] = useState<(number | null)[]>([null, null, null]);
+  const [levelScores, setLevelScores] = useState<(number | null)[]>(new Array(levels.length).fill(null));
+  const [levelStars, setLevelStars] = useState<(number | null)[]>(new Array(levels.length).fill(null));
   const [totalScore, setTotalScore] = useState(0);
 
-  const level = LEVELS[currentLevel];
+  const level = levels[currentLevel] ?? levels[0];
 
   const initLevel = useCallback(() => {
     const shuffled = [...level.steps.map((s) => s.id)].sort(() => Math.random() - 0.5);
@@ -170,7 +210,7 @@ export default function SSLHandshake({ onScoreChange }: Props) {
           return u;
         });
 
-        if (currentLevel >= LEVELS.length - 1) {
+        if (currentLevel >= levels.length - 1) {
           setAllComplete(true);
           setMessage('Secure Connection Established! All levels complete!');
         } else {
@@ -187,17 +227,17 @@ export default function SSLHandshake({ onScoreChange }: Props) {
   };
 
   const handleNextLevel = () => {
-    if (currentLevel < LEVELS.length - 1) {
+    if (currentLevel < levels.length - 1) {
       const nextLevel = currentLevel + 1;
       setCurrentLevel(nextLevel);
       setAttempts(0);
-      const newShuffled = [...LEVELS[nextLevel].steps.map((s) => s.id)].sort(() => Math.random() - 0.5);
+      const newShuffled = [...levels[nextLevel].steps.map((s) => s.id)].sort(() => Math.random() - 0.5);
       setAvailableSteps(newShuffled);
       setOrderedSteps([]);
       setLevelComplete(false);
       setSuccessArrows(false);
       setShakeWrong(false);
-      setMessage(`Level ${nextLevel + 1}: ${LEVELS[nextLevel].name} - Click steps in the correct handshake order!`);
+      setMessage(`Level ${nextLevel + 1}: ${levels[nextLevel].name} - Click steps in the correct handshake order!`);
     }
   };
 
@@ -210,16 +250,16 @@ export default function SSLHandshake({ onScoreChange }: Props) {
     setCurrentLevel(0);
     setScore(0);
     setAttempts(0);
-    setLevelScores([null, null, null]);
-    setLevelStars([null, null, null]);
+    setLevelScores(new Array(levels.length).fill(null));
+    setLevelStars(new Array(levels.length).fill(null));
     setTotalScore(0);
     setAllComplete(false);
     setOrderedSteps([]);
-    const shuffled = [...LEVELS[0].steps.map((s) => s.id)].sort(() => Math.random() - 0.5);
+    const shuffled = [...levels[0].steps.map((s) => s.id)].sort(() => Math.random() - 0.5);
     setAvailableSteps(shuffled);
     setLevelComplete(false);
     setSuccessArrows(false);
-    setMessage(`Level 1: ${LEVELS[0].name} - Click steps in the correct handshake order!`);
+    setMessage(`Level 1: ${levels[0].name} - Click steps in the correct handshake order!`);
     onScoreChange(0);
   };
 
@@ -229,7 +269,7 @@ export default function SSLHandshake({ onScoreChange }: Props) {
       <div className="text-center">
         <h2 className="font-fredoka text-2xl text-purple-dark text-outline-sm">SSL Handshake</h2>
         <p className="font-nunito text-xs text-purple-dark mt-1">
-          Build the TLS handshake by ordering steps correctly!
+          Build the target TLS handshake by ordering steps correctly!
         </p>
       </div>
 
@@ -262,7 +302,7 @@ export default function SSLHandshake({ onScoreChange }: Props) {
             <div className="w-14 h-14 rounded-2xl bg-green-success border-[3px] border-black flex items-center justify-center">
               <Laptop size={28} strokeWidth={3} className="text-white" />
             </div>
-            <span className="font-nunito text-xs font-bold text-purple-dark">Client</span>
+            <span className="font-nunito text-xs font-bold text-purple-dark">{clientLabel}</span>
           </div>
 
           <div className="flex items-center gap-1">
@@ -280,7 +320,7 @@ export default function SSLHandshake({ onScoreChange }: Props) {
             <div className="w-14 h-14 rounded-2xl bg-blue-info border-[3px] border-black flex items-center justify-center">
               <Server size={28} strokeWidth={3} className="text-white" />
             </div>
-            <span className="font-nunito text-xs font-bold text-purple-dark">Server</span>
+            <span className="font-nunito text-xs font-bold text-purple-dark">{serverLabel}</span>
           </div>
         </div>
 

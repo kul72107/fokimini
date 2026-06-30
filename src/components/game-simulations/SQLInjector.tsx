@@ -1,12 +1,13 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Database, ShieldAlert, Check, X, Zap, Trophy, ChevronRight,
   RotateCcw, Play, Search, Lock, Unlock, AlertTriangle, Code,
   Bug, Eye, Timer, Layers, Fingerprint, Sparkles, BookOpen
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -123,6 +124,88 @@ const PAYLOADS: Payload[] = [
   },
 ];
 
+function buildOpsTargets({ target }: NonNullable<OpsContextProps['opsContext']>): Target[] {
+  return [
+    {
+      id: 'login',
+      label: `${target.platformName} Login`,
+      icon: <Lock size={20} strokeWidth={3} />,
+      baseQuery: `SELECT * FROM ${target.databaseName} WHERE username = '[INPUT]' AND password = '[INPUT2]'`,
+      inputLabel: target.adminUser,
+    },
+    {
+      id: 'search',
+      label: `${target.platformName} Search`,
+      icon: <Search size={20} strokeWidth={3} />,
+      baseQuery: `SELECT * FROM ${target.databaseName}_catalog WHERE name LIKE '%[INPUT]%'`,
+      inputLabel: 'Search term',
+    },
+    {
+      id: 'url',
+      label: `${target.platformName} Page ID`,
+      icon: <Code size={20} strokeWidth={3} />,
+      baseQuery: `SELECT * FROM ${target.databaseName}_pages WHERE id = [INPUT]`,
+      inputLabel: 'Page ID',
+    },
+  ];
+}
+
+function buildOpsPayloads({ target }: NonNullable<OpsContextProps['opsContext']>): Payload[] {
+  const adminPass = `${target.targetName.replace(/\s+/g, '')}!${target.targetId}Admin`;
+  return PAYLOADS.map((payload) => {
+    if (payload.id.startsWith('classic')) {
+      return {
+        ...payload,
+        extractedData: {
+          cols: ['id', 'username', 'secret_hint', 'role'],
+          rows: [
+            ['1', target.adminUser, adminPass, 'admin'],
+            ['2', target.standardUser, target.sessionCookieName, 'user'],
+            ['3', target.serviceAccount, target.apiKeyName, 'service'],
+          ],
+        },
+      };
+    }
+    if (payload.id === 'union1') {
+      return {
+        ...payload,
+        payload: `' UNION SELECT * FROM ${target.databaseName}_secrets--`,
+        extractedData: {
+          cols: ['id', 'service', 'proof'],
+          rows: [
+            ['1', target.apiName, target.apiKeyName],
+            ['2', target.backupName, target.backupName],
+            ['3', target.widgetName, target.sessionCookieName],
+          ],
+        },
+      };
+    }
+    if (payload.id === 'blind1') {
+      return {
+        ...payload,
+        payload: `' AND SUBSTRING((SELECT ${target.sessionCookieName} FROM ${target.databaseName}),1,1)='${target.sessionCookieName[0]}`,
+      };
+    }
+    if (payload.id === 'time1') {
+      return {
+        ...payload,
+        description: `Delays ${target.apiName} to confirm the scoped injection path`,
+      };
+    }
+    if (payload.id === 'error1') {
+      return {
+        ...payload,
+        description: `Forces a ${target.databaseName} error to leak target-bound detail`,
+        extractedData: {
+          cols: ['error_message'],
+          rows: [[`${target.databaseName} cast failed near ${target.apiName} request ${target.sessionCookieName}`]],
+        },
+      };
+    }
+    return payload;
+  });
+}
+
 const CATEGORY_LABELS: Record<PayloadCategory, string> = {
   classic: 'Classic',
   union: 'Union',
@@ -139,7 +222,9 @@ const CATEGORY_COLORS: Record<PayloadCategory, string> = {
   blind: '#4ADE80',
 };
 
-export default function SQLInjector({ onScoreChange }: Props) {
+export default function SQLInjector({ onScoreChange, opsContext }: Props) {
+  const targets = useMemo(() => opsContext ? buildOpsTargets(opsContext) : TARGETS, [opsContext]);
+  const payloads = useMemo(() => opsContext ? buildOpsPayloads(opsContext) : PAYLOADS, [opsContext]);
   const [targetUrl, setTargetUrl] = useState('');
   const [selectedTarget, setSelectedTarget] = useState<TargetType>('login');
   const [inputValue, setInputValue] = useState('');
@@ -159,7 +244,7 @@ export default function SQLInjector({ onScoreChange }: Props) {
   const [showResultsPanel, setShowResultsPanel] = useState(false);
   const attemptCounter = useRef(0);
 
-  const currentTarget = TARGETS.find(t => t.id === selectedTarget) || TARGETS[0];
+  const currentTarget = targets.find(t => t.id === selectedTarget) || targets[0];
 
   const addScore = useCallback((points: number) => {
     setScore(prev => {
@@ -212,12 +297,12 @@ export default function SQLInjector({ onScoreChange }: Props) {
 
   useEffect(() => {
     if (!scanningAll || scanIndex < 0) return;
-    if (scanIndex >= PAYLOADS.length) {
+    if (scanIndex >= payloads.length) {
       setScanningAll(false);
       setScanIndex(-1);
       return;
     }
-    const p = PAYLOADS[scanIndex];
+    const p = payloads[scanIndex];
     setSelectedPayload(p);
     setShowQuery(true);
     setIsTesting(true);
@@ -236,7 +321,7 @@ export default function SQLInjector({ onScoreChange }: Props) {
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [scanningAll, scanIndex, addScore]);
+  }, [scanningAll, scanIndex, payloads, addScore]);
 
   const reset = useCallback(() => {
     setInputValue('');
@@ -252,7 +337,7 @@ export default function SQLInjector({ onScoreChange }: Props) {
     setScanIndex(-1);
   }, []);
 
-  const categories = Array.from(new Set(PAYLOADS.map(p => p.category)));
+  const categories = Array.from(new Set(payloads.map(p => p.category)));
 
   const safeQuery = currentTarget.baseQuery.replace('[INPUT]', inputValue || '1').replace('[INPUT2]', passwordValue || '***');
   const injectedQuery = selectedPayload ? buildQuery(selectedPayload.payload) : safeQuery;
@@ -293,10 +378,10 @@ export default function SQLInjector({ onScoreChange }: Props) {
             type="text"
             value={targetUrl}
             onChange={e => setTargetUrl(e.target.value)}
-            placeholder="http://target-site.com/login"
+            placeholder={opsContext ? `https://${opsContext.target.primaryDomain}${opsContext.target.adminPath}` : 'http://target-site.com/login'}
             className="flex-1 min-w-[200px] px-4 py-2 rounded-xl border-4 border-black font-mono text-sm focus:outline-none focus:ring-4 focus:ring-purple-primary bg-purple-pale"
           />
-          {TARGETS.map(t => (
+          {targets.map(t => (
             <button
               key={t.id}
               onClick={() => { setSelectedTarget(t.id); reset(); }}
@@ -344,7 +429,7 @@ export default function SQLInjector({ onScoreChange }: Props) {
                         className="overflow-hidden"
                       >
                         <div className="space-y-1 mt-1">
-                          {PAYLOADS.filter(p => p.category === cat).map(payload => (
+                          {payloads.filter(p => p.category === cat).map(payload => (
                             <motion.button
                               key={payload.id}
                               layout
@@ -385,7 +470,7 @@ export default function SQLInjector({ onScoreChange }: Props) {
             style={{ backgroundColor: scanningAll ? '#A78BFA' : '#FACC15' }}
           >
             <Zap size={18} strokeWidth={3} />
-            {scanningAll ? `Scanning ${scanIndex + 1}/${PAYLOADS.length}...` : 'Vulnerability Scanner'}
+            {scanningAll ? `Scanning ${scanIndex + 1}/${payloads.length}...` : 'Vulnerability Scanner'}
           </button>
 
           {scanningAll && (
@@ -393,7 +478,7 @@ export default function SQLInjector({ onScoreChange }: Props) {
               <div className="w-full bg-gray-200 rounded-full h-4 border-2 border-black overflow-hidden">
                 <motion.div
                   className="h-full bg-purple-primary rounded-full"
-                  animate={{ width: `${((scanIndex) / PAYLOADS.length) * 100}%` }}
+                  animate={{ width: `${((scanIndex) / payloads.length) * 100}%` }}
                 />
               </div>
             </div>
@@ -538,7 +623,7 @@ export default function SQLInjector({ onScoreChange }: Props) {
               </h3>
               <div className="space-y-1">
                 {foundVulns.map((vId, i) => {
-                  const p = PAYLOADS.find(pl => pl.id === vId);
+                  const p = payloads.find(pl => pl.id === vId);
                   return (
                     <div key={vId} className="flex items-center gap-2 text-sm">
                       <Check size={14} strokeWidth={3} color="#4ADE80" />
@@ -660,10 +745,10 @@ export default function SQLInjector({ onScoreChange }: Props) {
                         <p className="text-xs font-nunito font-bold text-green-700 mb-1">Use Parameterized Query:</p>
                         <code className="block font-mono text-[10px] bg-white rounded-lg border-2 border-black p-2">
                           {currentTarget.id === 'login'
-                            ? `db.query("SELECT * FROM users WHERE username = ? AND password = ?", [username, password])`
+                            ? `db.query("SELECT * FROM ${opsContext?.target.databaseName ?? 'users'} WHERE username = ? AND password = ?", [username, password])`
                             : currentTarget.id === 'search'
-                              ? `db.query("SELECT * FROM products WHERE name LIKE ?", ["%" + search + "%"])`
-                              : `db.query("SELECT * FROM pages WHERE id = ?", [pageId])`
+                              ? `db.query("SELECT * FROM ${opsContext ? `${opsContext.target.databaseName}_catalog` : 'products'} WHERE name LIKE ?", ["%" + search + "%"])`
+                              : `db.query("SELECT * FROM ${opsContext ? `${opsContext.target.databaseName}_pages` : 'pages'} WHERE id = ?", [pageId])`
                           }
                         </code>
                       </div>
@@ -701,7 +786,7 @@ export default function SQLInjector({ onScoreChange }: Props) {
               </div>
               <div className="flex items-center justify-between">
                 <span>Payloads Available:</span>
-                <span className="font-bold text-purple-primary">{PAYLOADS.length}</span>
+                <span className="font-bold text-purple-primary">{payloads.length}</span>
               </div>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wifi, Play, Pause, Square, Search, Filter, Eye, EyeOff,
@@ -6,8 +6,9 @@ import {
   Globe, Lock, Activity, Server, Layers, Download, Sparkles,
   CheckCircle
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -77,10 +78,47 @@ const DNS_PAYLOADS = [
 
 const TCP_FLAGS_POOL = [['SYN'], ['SYN', 'ACK'], ['ACK'], ['PSH', 'ACK'], ['FIN', 'ACK'], ['RST']];
 
-function generateRandomPacket(id: number): Packet {
+interface PacketProfile {
+  sourceIps: string[];
+  destIps: string[];
+  httpPayloads: string[];
+  dnsPayloads: string[];
+}
+
+function buildPacketProfile(opsContext?: OpsContextProps['opsContext']): PacketProfile {
+  if (!opsContext) {
+    return {
+      sourceIps: SOURCE_IPS,
+      destIps: DEST_IPS,
+      httpPayloads: HTTP_PAYLOADS,
+      dnsPayloads: DNS_PAYLOADS,
+    };
+  }
+
+  const { target } = opsContext;
+  return {
+    sourceIps: [target.ips.client, target.ips.web, target.ips.api, target.ips.vpn, target.ips.attacker, target.ips.resolver],
+    destIps: [target.ips.web, target.ips.api, target.ips.db, target.ips.backup, target.ips.vendor, target.ips.resolver],
+    httpPayloads: [
+      `GET ${target.adminPath} HTTP/1.1\r\nHost: ${target.hosts.admin}\r\nUser-Agent: ${target.platformName}/ops`,
+      `POST /api/session HTTP/1.1\r\nHost: ${target.hosts.api}\r\nCookie: ${target.sessionCookieName}=revocable`,
+      `GET ${target.cmsPath} HTTP/1.1\r\nHost: ${target.primaryDomain}`,
+      `POST /widget/check HTTP/1.1\r\nHost: ${target.hosts.vendor}\r\nX-Widget: ${target.widgetName}`,
+    ],
+    dnsPayloads: [
+      `Standard query 0x1234 A ${target.primaryDomain}`,
+      `Standard query response ${target.primaryDomain} -> ${target.ips.web}`,
+      `Standard query 0xABCD A ${target.hosts.api}`,
+      `Standard query PTR ${target.ips.web}.in-addr.arpa`,
+      `Standard query MX ${target.rootDomain}`,
+    ],
+  };
+}
+
+function generateRandomPacket(id: number, profile: PacketProfile): Packet {
   const proto = PROTOCOLS[Math.floor(Math.random() * PROTOCOLS.length)];
-  const src = SOURCE_IPS[Math.floor(Math.random() * SOURCE_IPS.length)];
-  const dst = DEST_IPS[Math.floor(Math.random() * DEST_IPS.length)];
+  const src = profile.sourceIps[Math.floor(Math.random() * profile.sourceIps.length)];
+  const dst = profile.destIps[Math.floor(Math.random() * profile.destIps.length)];
   const srcPort = Math.floor(Math.random() * 64512) + 1024;
   let dstPort = 80;
   let info = '';
@@ -91,7 +129,7 @@ function generateRandomPacket(id: number): Packet {
     case 'HTTP':
       dstPort = [80, 8080, 8000][Math.floor(Math.random() * 3)];
       info = `${srcPort} -> ${dstPort} [${['GET', 'POST', 'PUT', 'DELETE'][Math.floor(Math.random() * 4)]}]`;
-      payload = HTTP_PAYLOADS[Math.floor(Math.random() * HTTP_PAYLOADS.length)];
+      payload = profile.httpPayloads[Math.floor(Math.random() * profile.httpPayloads.length)];
       flags = ['PSH', 'ACK'];
       break;
     case 'HTTPS':
@@ -102,7 +140,7 @@ function generateRandomPacket(id: number): Packet {
       break;
     case 'DNS':
       dstPort = 53;
-      info = DNS_PAYLOADS[Math.floor(Math.random() * DNS_PAYLOADS.length)];
+      info = profile.dnsPayloads[Math.floor(Math.random() * profile.dnsPayloads.length)];
       payload = `DNS Query ID: 0x${Math.floor(Math.random() * 65535).toString(16).toUpperCase().padStart(4, '0')}`;
       break;
     case 'TCP':
@@ -161,7 +199,8 @@ function ArrowRightIcon() {
   return <ArrowUp size={12} strokeWidth={3} className="rotate-90" />;
 }
 
-export default function PacketSnifferGUI({ onScoreChange }: Props) {
+export default function PacketSnifferGUI({ onScoreChange, opsContext }: Props) {
+  const packetProfile = useMemo(() => buildPacketProfile(opsContext), [opsContext]);
   const [selectedInterface, setSelectedInterface] = useState('eth0');
   const [isCapturing, setIsCapturing] = useState(false);
   const [packets, setPackets] = useState<Packet[]>([]);
@@ -204,7 +243,7 @@ export default function PacketSnifferGUI({ onScoreChange }: Props) {
 
     intervalRef.current = setInterval(() => {
       packetIdRef.current += 1;
-      const newPacket = generateRandomPacket(packetIdRef.current);
+      const newPacket = generateRandomPacket(packetIdRef.current, packetProfile);
 
       setPackets(prev => {
         const updated = [...prev, newPacket];
@@ -229,7 +268,7 @@ export default function PacketSnifferGUI({ onScoreChange }: Props) {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isCapturing, onScoreChange]);
+  }, [isCapturing, onScoreChange, packetProfile]);
 
   useEffect(() => {
     if (protocolsIdentified.size >= 5 && protocolsIdentified.size <= 7) {
@@ -573,7 +612,7 @@ export default function PacketSnifferGUI({ onScoreChange }: Props) {
                 <span className="font-nunito text-[9px] text-purple-light">
                   {selectedPacket.protocol === 'HTTP' && 'HTTP: HyperText Transfer Protocol. Used for web browsing. Sends requests (GET, POST) and responses.'}
                   {selectedPacket.protocol === 'HTTPS' && 'HTTPS: Secure HTTP. All data is encrypted with TLS so attackers cannot read it!'}
-                  {selectedPacket.protocol === 'DNS' && 'DNS: Domain Name System. Converts website names (like google.com) into IP addresses.'}
+                  {selectedPacket.protocol === 'DNS' && `DNS: Domain Name System. Converts target names like ${opsContext?.target.primaryDomain ?? 'example.com'} into IP addresses.`}
                   {selectedPacket.protocol === 'TCP' && 'TCP: Transmission Control Protocol. Reliable delivery with handshakes (SYN, ACK) and error checking.'}
                   {selectedPacket.protocol === 'UDP' && 'UDP: User Datagram Protocol. Faster than TCP but no delivery guarantee. Used for streaming, DNS.'}
                   {selectedPacket.protocol === 'ICMP' && 'ICMP: Internet Control Message Protocol. Used for ping and error messages between routers.'}

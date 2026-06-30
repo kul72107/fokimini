@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, ShieldCheck, ShieldAlert, Lock, Unlock, Check, X,
@@ -6,8 +6,9 @@ import {
   KeyRound, Calendar, Clock, Hash, Award, AlertTriangle,
   Sparkles, Download, Crown, Medal, Server, Search
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -135,6 +136,112 @@ const CERT_CHAINS: CertChain[] = [
   },
 ];
 
+function buildOpsCertChains({ target }: NonNullable<OpsContextProps['opsContext']>): CertChain[] {
+  return [
+    {
+      id: 'target-valid',
+      domain: target.certificate.host,
+      description: `${target.platformName} active certificate chain`,
+      certs: [
+        {
+          id: 'root-target',
+          label: `${target.orgName} Root CA`,
+          type: 'root',
+          subject: `CN=${target.orgName} Root CA, O=${target.orgName}, C=US`,
+          issuer: `CN=${target.orgName} Root CA, O=${target.orgName}, C=US`,
+          validFrom: '2025-01-01',
+          validTo: '2031-01-01',
+          serialNumber: `ROOT:${target.targetId}`,
+          fingerprint: target.certificate.fingerprint,
+          sigAlgo: 'sha256WithRSAEncryption',
+          keySize: 2048,
+          keyUsage: ['Certificate Sign', 'CRL Sign'],
+          isExpired: false,
+          isSelfSigned: true,
+          domainMatch: true,
+          strongSig: true,
+          grade: 'A+',
+          gradeColor: '#4ADE80',
+        },
+        {
+          id: 'srv-target',
+          label: target.certificate.host,
+          type: 'server',
+          subject: target.certificate.subject,
+          issuer: `CN=${target.certificate.issuer}, O=${target.orgName}, C=US`,
+          validFrom: target.certificate.validFrom,
+          validTo: target.certificate.validTo,
+          serialNumber: target.certificate.serialNumber,
+          fingerprint: target.certificate.fingerprint,
+          sigAlgo: 'sha256WithRSAEncryption',
+          keySize: 2048,
+          keyUsage: ['Digital Signature', 'Key Encipherment'],
+          isExpired: false,
+          isSelfSigned: false,
+          domainMatch: true,
+          strongSig: true,
+          grade: 'A+',
+          gradeColor: '#4ADE80',
+        },
+      ],
+    },
+    {
+      id: 'target-stale',
+      domain: target.certificate.staleHost,
+      description: `${target.platformName} stale legacy certificate`,
+      certs: [
+        {
+          id: 'srv-stale',
+          label: target.certificate.staleHost,
+          type: 'server',
+          subject: target.certificate.staleSubject,
+          issuer: `CN=${target.certificate.staleIssuer}, O=${target.orgName}, C=US`,
+          validFrom: '2023-02-01',
+          validTo: target.certificate.staleValidTo,
+          serialNumber: `STALE:${target.targetId}`,
+          fingerprint: target.certificate.fingerprint.split(':').reverse().join(':'),
+          sigAlgo: 'sha1WithRSAEncryption',
+          keySize: 1024,
+          keyUsage: ['Digital Signature'],
+          isExpired: true,
+          isSelfSigned: false,
+          domainMatch: false,
+          strongSig: false,
+          grade: 'F',
+          gradeColor: '#F87171',
+        },
+      ],
+    },
+    {
+      id: 'target-vendor',
+      domain: target.hosts.vendor,
+      description: `${target.widgetName} partner certificate`,
+      certs: [
+        {
+          id: 'srv-vendor',
+          label: target.hosts.vendor,
+          type: 'server',
+          subject: `CN=${target.hosts.vendor}, O=${target.vendorName}, C=US`,
+          issuer: `CN=${target.certificate.issuer}, O=${target.orgName}, C=US`,
+          validFrom: '2026-01-10',
+          validTo: '2026-12-10',
+          serialNumber: `VENDOR:${target.targetId}`,
+          fingerprint: target.certificate.fingerprint.slice(0, 23),
+          sigAlgo: 'sha256WithRSAEncryption',
+          keySize: 2048,
+          keyUsage: ['Digital Signature', 'Key Encipherment'],
+          isExpired: false,
+          isSelfSigned: false,
+          domainMatch: true,
+          strongSig: true,
+          grade: 'A',
+          gradeColor: '#4ADE80',
+        },
+      ],
+    },
+  ];
+}
+
 const GRADE_COLORS: Record<string, string> = {
   'A+': '#4ADE80', 'A': '#4ADE80', 'B': '#FACC15', 'C': '#FB923C', 'F': '#F87171',
 };
@@ -151,7 +258,8 @@ const TYPE_COLORS: Record<string, string> = {
   server: '#4ADE80',
 };
 
-export default function CertViewer({ onScoreChange }: Props) {
+export default function CertViewer({ onScoreChange, opsContext }: Props) {
+  const chains = useMemo(() => opsContext ? buildOpsCertChains(opsContext) : CERT_CHAINS, [opsContext]);
   const [domainInput, setDomainInput] = useState('');
   const [selectedChain, setSelectedChain] = useState<CertChain | null>(null);
   const [selectedCert, setSelectedCert] = useState<CertData | null>(null);
@@ -171,7 +279,7 @@ export default function CertViewer({ onScoreChange }: Props) {
 
   const inspectDomain = useCallback(() => {
     if (!domainInput) return;
-    const chain = CERT_CHAINS.find(c => c.domain === domainInput);
+    const chain = chains.find(c => c.domain === domainInput);
     if (chain) {
       setSelectedChain(chain);
       setSelectedCert(null);
@@ -183,7 +291,7 @@ export default function CertViewer({ onScoreChange }: Props) {
         addScore(50);
       }
     }
-  }, [domainInput, addScore]);
+  }, [domainInput, chains, addScore]);
 
   const loadChain = useCallback((chain: CertChain) => {
     setSelectedChain(chain);
@@ -260,7 +368,7 @@ export default function CertViewer({ onScoreChange }: Props) {
             type="text"
             value={domainInput}
             onChange={e => setDomainInput(e.target.value)}
-            placeholder="Enter domain (e.g., cyberpaw-arena.com)"
+            placeholder={`Enter domain (e.g., ${chains[0]?.domain ?? 'cyberpaw-arena.com'})`}
             className="flex-1 px-4 py-2 rounded-xl border-4 border-black font-mono text-sm focus:outline-none focus:ring-4 focus:ring-purple-primary bg-purple-pale"
           />
           <button
@@ -273,7 +381,7 @@ export default function CertViewer({ onScoreChange }: Props) {
           </button>
         </div>
         <div className="flex gap-2 mt-2 flex-wrap">
-          {CERT_CHAINS.map(chain => (
+          {chains.map(chain => (
             <button
               key={chain.id}
               onClick={() => loadChain(chain)}

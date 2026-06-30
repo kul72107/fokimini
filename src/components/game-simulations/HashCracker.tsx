@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Hash, Lock, Unlock, Zap, Trophy, ChevronRight, RotateCcw,
@@ -6,8 +6,9 @@ import {
   Gauge, Fingerprint, KeyRound, Database, AlertTriangle,
   Check, X, Layers, Shuffle, BookOpen, Target
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -105,6 +106,69 @@ const WORDLISTS: Record<string, WordlistItem[]> = {
   ],
 };
 
+function buildOpsChallenges({ target }: NonNullable<OpsContextProps['opsContext']>): HashChallenge[] {
+  return [
+    {
+      id: 1,
+      label: `${target.platformName} Admin Hint`,
+      hash: `${target.targetId}5f4dcc3b5aa765d61d8327deb882cf${target.targetId}`,
+      algo: 'MD5',
+      plaintext: `${target.targetName.replace(/\s+/g, '')}!${target.targetId}Admin`,
+      difficulty: 'Easy',
+      diffColor: '#4ADE80',
+      hint: `Belongs to ${target.adminUser} on ${target.hosts.admin}`,
+    },
+    {
+      id: 2,
+      label: `${target.apiName} Service Hash`,
+      hash: `${target.apiKeyName.slice(0, 8).toLowerCase()}a9c43db8c6965245`,
+      algo: 'SHA-1',
+      plaintext: `${target.apiKeyName.slice(0, 8)}-${target.xorKey}`,
+      difficulty: 'Medium',
+      diffColor: '#FACC15',
+      hint: `Service account: ${target.serviceAccount}`,
+    },
+    {
+      id: 3,
+      label: `${target.backupName} Recovery`,
+      hash: `${target.backupName.slice(0, 8)}2b4e7f5c3d1a8e6b`,
+      algo: 'SHA-256',
+      plaintext: `${target.backupName.slice(0, 10)}#26`,
+      difficulty: 'Hard',
+      diffColor: '#FB923C',
+      hint: `Recovery proof comes from ${target.hosts.backup}`,
+    },
+  ];
+}
+
+function buildOpsWordlists({ target }: NonNullable<OpsContextProps['opsContext']>): Record<string, WordlistItem[]> {
+  const admin = `${target.targetName.replace(/\s+/g, '')}!${target.targetId}Admin`;
+  const service = `${target.apiKeyName.slice(0, 8)}-${target.xorKey}`;
+  const backup = `${target.backupName.slice(0, 10)}#26`;
+  return {
+    target: [
+      { word: target.adminUser, isMatch: false },
+      { word: admin, isMatch: true },
+      { word: target.standardUser, isMatch: false },
+      { word: target.proofPhrase.replace(/\s+/g, ''), isMatch: false },
+      { word: service, isMatch: true },
+      { word: backup, isMatch: true },
+    ],
+    service: [
+      { word: target.apiKeyName, isMatch: false },
+      { word: target.xorKey, isMatch: false },
+      { word: service, isMatch: true },
+      { word: `${target.widgetName.replace(/\s+/g, '')}2026`, isMatch: false },
+    ],
+    recovery: [
+      { word: target.backupName, isMatch: false },
+      { word: backup, isMatch: true },
+      { word: target.sessionCookieName, isMatch: false },
+      { word: `${target.platformName.replace(/\s+/g, '')}!`, isMatch: false },
+    ],
+  };
+}
+
 const ATTACK_METHODS: { id: AttackMethod; label: string; icon: React.ReactNode; desc: string }[] = [
   { id: 'dictionary', label: 'Dictionary', icon: <BookOpen size={16} strokeWidth={3} />, desc: 'Try common passwords' },
   { id: 'brute', label: 'Brute Force', icon: <Zap size={16} strokeWidth={3} />, desc: 'Try every combination' },
@@ -112,7 +176,9 @@ const ATTACK_METHODS: { id: AttackMethod; label: string; icon: React.ReactNode; 
   { id: 'hybrid', label: 'Hybrid', icon: <Shuffle size={16} strokeWidth={3} />, desc: 'Dict + mutations' },
 ];
 
-export default function HashCracker({ onScoreChange }: Props) {
+export default function HashCracker({ onScoreChange, opsContext }: Props) {
+  const challenges = useMemo(() => opsContext ? buildOpsChallenges(opsContext) : CHALLENGES, [opsContext]);
+  const wordlists = useMemo(() => opsContext ? buildOpsWordlists(opsContext) : WORDLISTS, [opsContext]);
   const [hashInput, setHashInput] = useState('');
   const [selectedAlgo, setSelectedAlgo] = useState<HashAlgo>('MD5');
   const [selectedMethod, setSelectedMethod] = useState<AttackMethod>('dictionary');
@@ -167,7 +233,7 @@ export default function HashCracker({ onScoreChange }: Props) {
     startGearAnimation();
 
     const challenge = selectedChallenge;
-    const wordlist = WORDLISTS[selectedWordlist] || WORDLISTS.common;
+    const wordlist = wordlists[selectedWordlist] || wordlists.common || Object.values(wordlists)[0];
     const totalSteps = challenge ? wordlist.length : 100;
     const startTime = Date.now();
     let step = 0;
@@ -204,7 +270,7 @@ export default function HashCracker({ onScoreChange }: Props) {
     }, 1200 - speed * 10);
 
     processRef.current = process;
-  }, [hashInput, selectedChallenge, selectedWordlist, speed, showProcess, startGearAnimation, stopGearAnimation, addScore]);
+  }, [hashInput, selectedChallenge, selectedWordlist, speed, showProcess, wordlists, startGearAnimation, stopGearAnimation, addScore]);
 
   const stopCrack = useCallback(() => {
     if (processRef.current) clearInterval(processRef.current);
@@ -339,7 +405,7 @@ export default function HashCracker({ onScoreChange }: Props) {
             <div className="bg-white rounded-2xl border-4 border-black p-3 card-shadow">
               <h3 className="font-fredoka text-sm text-purple-darker mb-2">Wordlist</h3>
               <div className="space-y-1">
-                {Object.keys(WORDLISTS).map(name => (
+                {Object.keys(wordlists).map(name => (
                   <button
                     key={name}
                     onClick={() => setSelectedWordlist(name)}
@@ -347,7 +413,7 @@ export default function HashCracker({ onScoreChange }: Props) {
                       selectedWordlist === name ? 'bg-blue-info text-white' : 'bg-purple-pale hover:bg-purple-lighter'
                     }`}
                   >
-                    {name.charAt(0).toUpperCase() + name.slice(1)} ({WORDLISTS[name].length} words)
+                    {name.charAt(0).toUpperCase() + name.slice(1)} ({wordlists[name].length} words)
                   </button>
                 ))}
               </div>
@@ -629,7 +695,7 @@ export default function HashCracker({ onScoreChange }: Props) {
               Challenges
             </h3>
             <div className="space-y-2 max-h-[350px] overflow-y-auto">
-              {CHALLENGES.map(ch => (
+              {challenges.map(ch => (
                 <motion.button
                   key={ch.id}
                   whileHover={{ scale: 1.02 }}
@@ -698,7 +764,7 @@ export default function HashCracker({ onScoreChange }: Props) {
               </div>
               <div className="flex items-center justify-between">
                 <span>Hashes Cracked:</span>
-                <span className="font-bold text-green-success">{hashesCracked}/{CHALLENGES.length}</span>
+                <span className="font-bold text-green-success">{hashesCracked}/{challenges.length}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span>Attempts:</span>

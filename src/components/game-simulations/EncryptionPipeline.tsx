@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { OpsContextProps } from '@/lib/opsContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Lock,
@@ -20,7 +21,7 @@ import {
   Check,
 } from 'lucide-react';
 
-interface EncryptionPipelineProps {
+interface EncryptionPipelineProps extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -48,7 +49,7 @@ const REVERSE_SUB_MAP: Record<string, string> = Object.fromEntries(
   Object.entries(SUBSTITUTION_MAP).map(([k, v]) => [v, k])
 );
 
-export default function EncryptionPipeline({ onScoreChange }: EncryptionPipelineProps) {
+export default function EncryptionPipeline({ onScoreChange, opsContext }: EncryptionPipelineProps) {
   const [gameActive, setGameActive] = useState(false);
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState(1);
@@ -67,6 +68,17 @@ export default function EncryptionPipeline({ onScoreChange }: EncryptionPipeline
 
   const levelTitles = ['Caesar Cipher', 'XOR Encryption', 'Substitution Cipher'];
   const levelTypes: EncryptionType[] = ['caesar', 'xor', 'substitution'];
+  const sampleMessages = useMemo(() => {
+    if (!opsContext) return SAMPLE_MESSAGES;
+    const { target } = opsContext;
+    return [
+      target.xorKey,
+      target.sessionCookieName.slice(0, 12).toUpperCase(),
+      target.apiKeyName.slice(0, 12),
+      target.backupName.slice(0, 12).toUpperCase(),
+      target.databaseName.slice(0, 12).toUpperCase(),
+    ];
+  }, [opsContext]);
 
   const caesarEncrypt = (text: string, shift: number): string => {
     return text
@@ -316,7 +328,7 @@ export default function EncryptionPipeline({ onScoreChange }: EncryptionPipeline
             value={key}
             onChange={(e) => handleKeyChange(e.target.value.toUpperCase())}
             className="w-32 text-center font-mono text-sm font-bold text-purple-dark bg-white border-[3px] border-black rounded-xl px-2 py-1"
-            placeholder="SECRET"
+            placeholder={opsContext?.target.xorKey ?? "SECRET"}
             maxLength={8}
           />
           {key && (
@@ -418,9 +430,12 @@ export default function EncryptionPipeline({ onScoreChange }: EncryptionPipeline
           <h3 className="font-fredoka text-xl font-bold text-purple-dark mb-2">
             Encryption Pipeline
           </h3>
+          {opsContext && (
+            <p className="mb-2 font-mono text-[10px] font-bold text-purple-primary">{opsContext.target.primaryDomain} / {opsContext.target.apiKeyName}</p>
+          )}
           <p className="font-nunito text-sm text-purple-dark mb-4">
-            Watch how encryption transforms your message! Select a message,
-            provide a key, and see the encryption/decryption pipeline in action.
+            Watch how encryption transforms the selected target artifact. Pick a message,
+            provide a key, and verify the pipeline against the active VS target.
           </p>
           <button
             onClick={startGame}
@@ -637,7 +652,7 @@ export default function EncryptionPipeline({ onScoreChange }: EncryptionPipeline
               Select a message:
             </span>
             <div className="flex gap-2 flex-wrap">
-              {SAMPLE_MESSAGES.map((msg) => (
+              {sampleMessages.map((msg) => (
                 <motion.button
                   key={msg}
                   whileHover={{ scale: 1.1 }}

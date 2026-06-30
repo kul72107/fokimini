@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Mail, ShieldAlert, Check, X, Zap, Trophy, ChevronRight, RotateCcw,
@@ -6,8 +6,9 @@ import {
   UserCircle, Clock, Link2, FileText, Star, Fingerprint,
   MessageSquare, ThumbsUp, ThumbsDown, BadgeCheck, XCircle
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -111,6 +112,68 @@ const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
 ];
 
+function buildOpsTemplates({ target }: NonNullable<OpsContextProps['opsContext']>): EmailTemplate[] {
+  const fakeDomain = `login-${target.rootDomain.replace('.', '-')}.ops`;
+  return [
+    {
+      id: 1,
+      type: 'phishing',
+      from: `security@${fakeDomain}`,
+      displayFrom: `${target.platformName} Security`,
+      subject: `${target.sessionCookieName} expires in 24 minutes`,
+      body: `Dear ${target.standardUser},\n\nYour ${target.platformName} session needs urgent verification. Confirm the ${target.sessionCookieName} token here:\n\nhttp://${fakeDomain}${target.adminPath}\n\nFailure to respond will lock ${target.adminEmail}.\n\n${target.platformName} Security`,
+      urgency: true,
+      hasFakeLink: true,
+      hasSpellingErrors: false,
+      requestsPersonalInfo: true,
+      suspiciousSender: true,
+      indicators: ['Urgent language', `Sender domain is not ${target.rootDomain}`, 'Fake link', `Requests ${target.sessionCookieName}`],
+    },
+    {
+      id: 2,
+      type: 'legit',
+      from: target.supportEmail,
+      displayFrom: `${target.platformName} Support`,
+      subject: `${target.backupName} verification receipt`,
+      body: `Hi,\n\nThe backup proof ${target.backupName} was verified from ${target.hosts.backup}. No action is needed.\n\nReference: ${target.logs.backupEvent}\n\n${target.platformName} Support`,
+      urgency: false,
+      hasFakeLink: false,
+      hasSpellingErrors: false,
+      requestsPersonalInfo: false,
+      suspiciousSender: false,
+      indicators: [],
+    },
+    {
+      id: 3,
+      type: 'phishing',
+      from: `helpdesk@${target.hosts.old}`,
+      displayFrom: `${target.orgName} Helpdesk`,
+      subject: `Immediate ${target.apiKeyName} rotation required`,
+      body: `Hello,\n\nWe need to rotate ${target.apiKeyName}. Send the current value and admin password for ${target.adminUser} to continue.\n\nPortal: http://${target.hosts.old}/reset\n\nThis request expires shortly.`,
+      urgency: true,
+      hasFakeLink: true,
+      hasSpellingErrors: false,
+      requestsPersonalInfo: true,
+      suspiciousSender: true,
+      indicators: ['Secret request', `Legacy host ${target.hosts.old}`, 'Fake reset link', 'Urgent language'],
+    },
+    {
+      id: 4,
+      type: 'legit',
+      from: target.engineerEmail,
+      displayFrom: `${target.platformName} Engineering`,
+      subject: `${target.apiName} health check complete`,
+      body: `Hello,\n\n${target.apiName} on ${target.hosts.api} passed the scheduled health check.\n\nNo credential or token action is required.\n\n${target.orgName}`,
+      urgency: false,
+      hasFakeLink: false,
+      hasSpellingErrors: false,
+      requestsPersonalInfo: false,
+      suspiciousSender: false,
+      indicators: [],
+    },
+  ];
+}
+
 interface BuilderState {
   from: string;
   subject: string;
@@ -119,7 +182,8 @@ interface BuilderState {
   spoofDomain: boolean;
 }
 
-export default function PhishingSim({ onScoreChange }: Props) {
+export default function PhishingSim({ onScoreChange, opsContext }: Props) {
+  const templates = useMemo(() => opsContext ? buildOpsTemplates(opsContext) : EMAIL_TEMPLATES, [opsContext]);
   const [score, setScore] = useState(0);
   const [correctGuesses, setCorrectGuesses] = useState(0);
   const [builder, setBuilder] = useState<BuilderState>({
@@ -140,7 +204,7 @@ export default function PhishingSim({ onScoreChange }: Props) {
   }, [onScoreChange]);
 
   const makeGuess = useCallback((emailId: number, guess: EmailType) => {
-    const email = EMAIL_TEMPLATES.find(e => e.id === emailId);
+    const email = templates.find(e => e.id === emailId);
     if (!email) return;
     if (analyzedEmails[emailId]) return; // Already guessed
 
@@ -150,7 +214,7 @@ export default function PhishingSim({ onScoreChange }: Props) {
       setCorrectGuesses(prev => prev + 1);
       addScore(20);
     }
-  }, [analyzedEmails, addScore]);
+  }, [analyzedEmails, templates, addScore]);
 
   const toggleIndicators = useCallback((emailId: number) => {
     setShowIndicators(prev => ({ ...prev, [emailId]: !prev[emailId] }));
@@ -177,7 +241,7 @@ export default function PhishingSim({ onScoreChange }: Props) {
     setBuildScore(0);
   }, []);
 
-  const selectedEmail = EMAIL_TEMPLATES.find(e => e.id === selectedEmailId);
+  const selectedEmail = templates.find(e => e.id === selectedEmailId);
 
   return (
     <div className="w-full min-h-[600px] bg-purple-pale p-4 font-nunito">
@@ -199,7 +263,7 @@ export default function PhishingSim({ onScoreChange }: Props) {
           </div>
           <div className="bg-green-success px-4 py-2 rounded-2xl border-4 border-black flex items-center gap-2">
             <Check size={20} strokeWidth={3} />
-            <span className="font-fredoka text-lg">{correctGuesses}/{EMAIL_TEMPLATES.length}</span>
+            <span className="font-fredoka text-lg">{correctGuesses}/{templates.length}</span>
           </div>
           <button onClick={reset} className="p-2 bg-purple-light rounded-2xl border-4 border-black hover:bg-purple-primary transition-colors">
             <RotateCcw size={20} strokeWidth={3} />
@@ -225,7 +289,7 @@ export default function PhishingSim({ onScoreChange }: Props) {
                 type="text"
                 value={builder.from}
                 onChange={e => setBuilder(prev => ({ ...prev, from: e.target.value }))}
-                placeholder="bank@secure.com"
+                placeholder={opsContext ? `security@${opsContext.target.rootDomain}` : 'bank@secure.com'}
                 className="w-full px-3 py-2 rounded-xl border-[3px] border-black font-mono text-sm bg-purple-pale focus:outline-none focus:ring-4 focus:ring-purple-primary"
               />
             </div>
@@ -474,7 +538,7 @@ export default function PhishingSim({ onScoreChange }: Props) {
 
         {/* Email Cards Grid */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-          {EMAIL_TEMPLATES.map(email => {
+          {templates.map(email => {
             const guess = analyzedEmails[email.id];
             return (
               <motion.button

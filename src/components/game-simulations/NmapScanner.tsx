@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Radar, Zap, Shield, Globe, Server, Lock, Unlock,
   Crosshair, Activity, ChevronRight, Star, Download
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -116,6 +117,54 @@ const TARGETS: TargetProfile[] = [
   },
 ];
 
+function buildOpsTargets({ target }: NonNullable<OpsContextProps['opsContext']>): TargetProfile[] {
+  return [
+    {
+      name: `${target.platformName} Web`,
+      ip: target.ips.web,
+      icon: <Globe size={20} strokeWidth={3} />,
+      color: '#60A5FA',
+      description: `${target.hosts.app} public application surface`,
+      osGuess: `${target.orgName} Linux edge`,
+      ports: [
+        { port: 22, state: 'open', service: 'SSH', version: 'OpenSSH target-lab' },
+        { port: 53, state: 'open', service: 'DNS', version: `${target.hosts.resolver}` },
+        { port: 80, state: 'open', service: 'HTTP', version: `${target.platformName} redirect` },
+        { port: 88, state: 'filtered', service: 'Kerberos', version: 'filtered by policy' },
+        { port: 99, state: 'open', service: 'HTTPS', version: target.services.find((service) => service.key === 'web')?.version },
+      ],
+    },
+    {
+      name: `${target.platformName} API`,
+      ip: target.ips.api,
+      icon: <Server size={20} strokeWidth={3} />,
+      color: '#A78BFA',
+      description: `${target.apiName} gateway tied to ${target.databaseName}`,
+      osGuess: `${target.orgName} API node`,
+      ports: [
+        { port: 22, state: 'open', service: 'SSH', version: 'OpenSSH restricted' },
+        { port: 53, state: 'closed', service: 'DNS' },
+        { port: 80, state: 'filtered', service: 'HTTP' },
+        { port: 99, state: 'open', service: 'HTTPS-Alt', version: target.services.find((service) => service.key === 'api')?.version },
+      ],
+    },
+    {
+      name: `${target.platformName} Data`,
+      ip: target.ips.db,
+      icon: <Lock size={20} strokeWidth={3} />,
+      color: '#FACC15',
+      description: `${target.databaseName} internal data layer`,
+      osGuess: `${target.orgName} database appliance`,
+      ports: [
+        { port: 22, state: 'filtered', service: 'SSH' },
+        { port: 53, state: 'closed', service: 'DNS' },
+        { port: 89, state: 'open', service: 'PostgreSQL', version: target.services.find((service) => service.key === 'db')?.version },
+        { port: 94, state: 'open', service: 'Backup API', version: target.backupName },
+      ],
+    },
+  ];
+}
+
 const SCAN_TYPES = [
   { id: 'quick', name: 'Quick Scan', desc: 'Top 20 ports', icon: <Zap size={16} strokeWidth={3} />, duration: 800, portCount: 20 },
   { id: 'full', name: 'Full Scan', desc: 'All 100 ports', icon: <Radar size={16} strokeWidth={3} />, duration: 2500, portCount: 100 },
@@ -123,8 +172,9 @@ const SCAN_TYPES = [
   { id: 'udp', name: 'UDP Scan', desc: 'UDP ports', icon: <Activity size={16} strokeWidth={3} />, duration: 2000, portCount: 30 },
 ];
 
-export default function NmapScanner({ onScoreChange }: Props) {
+export default function NmapScanner({ onScoreChange, opsContext }: Props) {
   const onScoreChangeRef = useRef(onScoreChange);
+  const targets = useMemo(() => opsContext ? buildOpsTargets(opsContext) : TARGETS, [opsContext]);
   const [selectedTarget, setSelectedTarget] = useState(0);
   const [scanType, setScanType] = useState('quick');
   const [isScanning, setIsScanning] = useState(false);
@@ -138,7 +188,7 @@ export default function NmapScanner({ onScoreChange }: Props) {
   const [scanCount, setScanCount] = useState(0);
   const [targetInput, setTargetInput] = useState('');
 
-  const target = TARGETS[selectedTarget];
+  const target = targets[selectedTarget] ?? targets[0];
   const currentScan = SCAN_TYPES.find(s => s.id === scanType)!;
 
   useEffect(() => {
@@ -322,7 +372,7 @@ export default function NmapScanner({ onScoreChange }: Props) {
           <div className="bg-white rounded-2xl border-4 border-black p-3 card-shadow">
             <h3 className="font-fredoka text-sm text-purple-dark mb-2">Targets</h3>
             <div className="flex flex-col gap-2">
-              {TARGETS.map((t, i) => (
+              {targets.map((t, i) => (
                 <button
                   key={i}
                   onClick={() => !isScanning && setSelectedTarget(i)}

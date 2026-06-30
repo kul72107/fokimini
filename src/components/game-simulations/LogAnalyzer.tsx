@@ -8,6 +8,7 @@ import {
   Clock, Activity, Server, Wifi, Terminal, Bug
 } from 'lucide-react';
 import SimuleToolTrainingPanel from './SimuleToolTrainingPanel';
+import type { OpsContextProps } from '@/lib/opsContext';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -271,7 +272,54 @@ const CASES: CaseData[] = [
 
 // ─── Main Component ──────────────────────────────────────
 
-export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: number) => void }) {
+function bindCasesToTarget(cases: CaseData[], opsContext?: OpsContextProps['opsContext']): CaseData[] {
+  if (!opsContext) return cases;
+  const { target } = opsContext;
+  const replacements: Array<[RegExp, string]> = [
+    [/192\.168\.1\.50/g, target.ips.attacker],
+    [/192\.168\.1\.99/g, target.ips.attacker],
+    [/192\.168\.1\.60/g, target.ips.vpn],
+    [/192\.168\.1\.40/g, target.ips.api],
+    [/192\.168\.1\.30/g, target.ips.mail],
+    [/192\.168\.1\.20/g, target.ips.web],
+    [/192\.168\.1\.10/g, target.ips.client],
+    [/185\.220\.101\.44/g, target.ips.backup],
+    [/45\.142\.214\.58/g, target.ips.vendor],
+    [/google\.com/g, target.primaryDomain],
+    [/company\.com/g, target.rootDomain],
+    [/company-cdn\.com/g, target.hosts.cdn],
+    [/backup\.company\.com/g, target.hosts.backup],
+    [/customer_db\.sql/g, `${target.databaseName}.sql`],
+    [/\/data\/customer_db/g, `/data/${target.databaseName}`],
+    [/\balice\b/g, target.standardUser],
+    [/\bbob\b/g, target.serviceAccount],
+    [/\bcharlie\b/g, target.engineerEmail.split('@')[0]],
+    [/\bdiana\b/g, target.supportEmail.split('@')[0]],
+    [/\badmin\b/g, target.adminUser],
+    [/\broot\b/g, target.serviceAccount],
+    [/\bcompany\b/g, target.platformName],
+  ];
+  const rewrite = (value: string) => replacements.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
+
+  return cases.map((caseData) => ({
+    ...caseData,
+    name: `${target.platformName}: ${caseData.name}`,
+    description: rewrite(caseData.description),
+    attackExplanation: rewrite(caseData.attackExplanation),
+    hints: caseData.hints.map(rewrite),
+    learningContent: rewrite(caseData.learningContent),
+    logs: caseData.logs.map((log) => ({
+      ...log,
+      sourceIP: rewrite(log.sourceIP),
+      user: rewrite(log.user),
+      description: rewrite(log.description),
+      clue: rewrite(log.clue),
+    })),
+  }));
+}
+
+export default function LogAnalyzer({ onScoreChange, opsContext }: { onScoreChange: (score: number) => void } & OpsContextProps) {
+  const cases = useMemo(() => bindCasesToTarget(CASES, opsContext), [opsContext]);
   const [currentCase, setCurrentCase] = useState(0);
   const [showCaseSelect, setShowCaseSelect] = useState(true);
   const [flaggedLogs, setFlaggedLogs] = useState<Set<string>>(new Set());
@@ -295,9 +343,9 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
     currentCaseRef.current = currentCase;
   }, [currentCase]);
 
-  // Filtered logs - use useMemo with CASES directly to avoid stale closure
+  // Filtered logs - use contextual cases directly to avoid stale closure
   const filteredLogs = useMemo(() => {
-    const caseData = CASES[currentCase];
+    const caseData = cases[currentCase];
     let logs = [...caseData.logs];
     if (filterType !== 'all') logs = logs.filter((l) => l.type === filterType);
     if (searchQuery.trim()) {
@@ -313,11 +361,11 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
     if (showSuspiciousOnly) logs = logs.filter((l) => l.suspicious);
     if (sortByTime) logs.sort((a, b) => a.timeNum - b.timeNum);
     return logs;
-  }, [currentCase, filterType, searchQuery, showSuspiciousOnly, sortByTime]);
+  }, [cases, currentCase, filterType, searchQuery, showSuspiciousOnly, sortByTime]);
 
   // Stats
   const flaggedCount = flaggedLogs.size;
-  const suspiciousCount = CASES[currentCase].logs.filter((l) => l.suspicious).length;
+  const suspiciousCount = cases[currentCase].logs.filter((l) => l.suspicious).length;
   const progress = suspiciousCount > 0
     ? Math.min(100, Math.round((flaggedCount / suspiciousCount) * 100))
     : 0;
@@ -354,7 +402,7 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
     if (!selectedAttack) return;
     // Use ref to get the latest currentCase, avoiding stale closure
     const caseIdx = currentCaseRef.current;
-    const currentCaseData = CASES[caseIdx];
+    const currentCaseData = cases[caseIdx];
     const correct = selectedAttack === currentCaseData.attackType;
     // Guard against division by zero
     const caseSuspiciousCount = currentCaseData.logs.filter((l) => l.suspicious).length;
@@ -374,7 +422,7 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
   }, [selectedAttack, flaggedCount, onScoreChange]);
 
   const handleNextCase = () => {
-    if (currentCase < CASES.length - 1) {
+    if (currentCase < cases.length - 1) {
       startCase(currentCase + 1);
     } else {
       setShowCaseSelect(true);
@@ -410,12 +458,12 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
               />
             ))}
           </div>
-          <span className="font-nunito text-[10px] text-purple-lighter">{caseScores.filter((s) => s !== null).length}/{CASES.length}</span>
+          <span className="font-nunito text-[10px] text-purple-lighter">{caseScores.filter((s) => s !== null).length}/{cases.length}</span>
         </div>
 
         {/* Case Grid */}
         <div className="w-full max-w-lg grid grid-cols-2 gap-3">
-          {CASES.map((cs, idx) => {
+          {cases.map((cs, idx) => {
             const isUnlocked = idx === 0 || caseScores[idx - 1] !== null;
             const isSolved = caseScores[idx] !== null;
 
@@ -482,7 +530,7 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
       <div className="w-full max-w-2xl flex items-center justify-between bg-purple-dark rounded-xl border-[3px] border-black px-4 py-2">
         <div className="flex items-center gap-2">
           <Crosshair size={16} strokeWidth={3} className="text-yellow-accent" />
-          <span className="font-fredoka text-sm font-bold text-white">Case {CASES[currentCase].id}: {CASES[currentCase].name}</span>
+          <span className="font-fredoka text-sm font-bold text-white">Case {cases[currentCase].id}: {cases[currentCase].name}</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="font-nunito text-[10px] text-purple-lighter">Clues:</span>
@@ -502,7 +550,7 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
       {/* Description */}
       <div className="w-full max-w-2xl bg-blue-info rounded-xl border-[3px] border-black px-3 py-1.5 flex items-center gap-2">
         <Info size={14} strokeWidth={3} className="text-white flex-shrink-0" />
-        <p className="font-nunito text-xs text-white font-semibold">{CASES[currentCase].description}</p>
+        <p className="font-nunito text-xs text-white font-semibold">{cases[currentCase].description}</p>
       </div>
 
       {/* Progress Bar */}
@@ -582,7 +630,7 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
           </button>
           <button
             onClick={() => {
-              const suspicious = CASES[currentCase].logs.filter((l) => l.suspicious);
+              const suspicious = cases[currentCase].logs.filter((l) => l.suspicious);
               setFlaggedLogs(new Set(suspicious.map((l) => l.id)));
             }}
             className="px-2 py-0.5 rounded-full border-[2px] border-black font-nunito text-[8px] font-bold bg-yellow-accent text-black hover:scale-105 transition-transform"
@@ -603,7 +651,7 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
           <button
             onClick={() => {
               setShowHint(!showHint);
-              if (!showHint) setHintIdx((prev) => Math.min(prev, CASES[currentCase].hints.length - 1));
+              if (!showHint) setHintIdx((prev) => Math.min(prev, cases[currentCase].hints.length - 1));
             }}
             className="px-2 py-0.5 rounded-full border-[2px] border-black font-nunito text-[8px] font-bold bg-purple-lighter text-purple-dark hover:scale-105 transition-transform"
           >
@@ -624,9 +672,9 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
               <div className="mt-2 bg-yellow-accent rounded-lg border-[2px] border-black p-2 flex items-start gap-2">
                 <HelpCircle size={14} strokeWidth={3} className="text-black flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-nunito text-[9px] text-black font-semibold">{CASES[currentCase].hints[hintIdx]}</p>
+                  <p className="font-nunito text-[9px] text-black font-semibold">{cases[currentCase].hints[hintIdx]}</p>
                   <div className="flex gap-1 mt-1">
-                    {CASES[currentCase].hints.map((_, i) => (
+                    {cases[currentCase].hints.map((_, i) => (
                       <button
                         key={i}
                         onClick={() => setHintIdx(i)}
@@ -782,7 +830,7 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
           </div>
           <div className="flex flex-wrap gap-1.5">
             {Array.from(flaggedLogs).map((logId) => {
-              const log = CASES[currentCase].logs.find((l) => l.id === logId);
+              const log = cases[currentCase].logs.find((l) => l.id === logId);
               if (!log) return null;
               return (
                 <motion.div
@@ -857,20 +905,20 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
               initial={{ scale: 0.85 }}
               animate={{ scale: 1 }}
               className={`w-full max-w-2xl rounded-2xl border-4 border-black p-4 flex flex-col items-center gap-2 ${
-                selectedAttack === CASES[currentCase].attackType ? 'bg-green-success' : 'bg-red-alert'
+                selectedAttack === cases[currentCase].attackType ? 'bg-green-success' : 'bg-red-alert'
               }`}
               style={{ boxShadow: '6px 6px 0px 0px #000' }}
             >
-              {selectedAttack === CASES[currentCase].attackType ? (
+              {selectedAttack === cases[currentCase].attackType ? (
                 <>
                   <Trophy size={32} strokeWidth={3} className="text-yellow-accent" />
                   <h3 className="font-fredoka text-lg font-bold text-black">Case Solved!</h3>
-                  <p className="font-nunito text-xs text-black text-center font-semibold">{CASES[currentCase].attackExplanation}</p>
+                  <p className="font-nunito text-xs text-black text-center font-semibold">{cases[currentCase].attackExplanation}</p>
                   <button
                     onClick={handleNextCase}
                     className="px-5 py-2 bg-purple-primary border-[3px] border-black rounded-full font-nunito text-xs font-bold text-white hover:scale-105 transition-transform flex items-center gap-1 mt-1"
                   >
-                    {currentCase < CASES.length - 1 ? 'Next Case' : 'All Cases Complete!'}
+                    {currentCase < cases.length - 1 ? 'Next Case' : 'All Cases Complete!'}
                     <ChevronRight size={14} strokeWidth={3} />
                   </button>
                 </>
@@ -879,9 +927,9 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
                   <X size={32} strokeWidth={4} className="text-white" />
                   <h3 className="font-fredoka text-lg font-bold text-white">Not Quite Right</h3>
                   <p className="font-nunito text-xs text-white text-center">
-                    This was actually a <strong>{ATTACK_OPTIONS.find((a) => a.type === CASES[currentCase].attackType)?.label}</strong>.
+                    This was actually a <strong>{ATTACK_OPTIONS.find((a) => a.type === cases[currentCase].attackType)?.label}</strong>.
                   </p>
-                  <p className="font-nunito text-[10px] text-white/80 text-center">{CASES[currentCase].attackExplanation}</p>
+                  <p className="font-nunito text-[10px] text-white/80 text-center">{cases[currentCase].attackExplanation}</p>
                   <div className="flex gap-2 mt-1">
                     <button
                       onClick={() => {
@@ -923,9 +971,9 @@ export default function LogAnalyzer({ onScoreChange }: { onScoreChange: (score: 
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Award size={14} strokeWidth={3} className="text-black" />
-                <span className="font-fredoka text-xs font-bold text-black">{CASES[currentCase].learningTopic}</span>
+                <span className="font-fredoka text-xs font-bold text-black">{cases[currentCase].learningTopic}</span>
               </div>
-              <p className="font-nunito text-[10px] text-black font-semibold">{CASES[currentCase].learningContent}</p>
+              <p className="font-nunito text-[10px] text-black font-semibold">{cases[currentCase].learningContent}</p>
               <button
                 onClick={() => setShowLearning(false)}
                 className="mt-2 px-3 py-1 bg-white border-[2px] border-black rounded-full font-nunito text-[9px] font-bold text-purple-dark hover:scale-105 transition-transform"

@@ -1,12 +1,13 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe, Server, ArrowRight, Check, X, RotateCcw, ChevronRight,
   Trophy, Star, Search, Database, HardDrive, Monitor, Cpu, Wifi, BookOpen
 } from 'lucide-react';
 import SimuleToolTrainingPanel from './SimuleToolTrainingPanel';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -122,6 +123,62 @@ const LEVELS: DomainLevel[] = [
   },
 ];
 
+function buildOpsLevels({ target }: NonNullable<OpsContextProps['opsContext']>): DomainLevel[] {
+  return [
+    {
+      id: 1,
+      name: `${target.platformName} App Lookup`,
+      domain: target.primaryDomain,
+      recordType: 'A',
+      correctPath: ['user', 'browser', 'resolver', 'root', 'tld', 'authoritative', 'ip'],
+      finalIp: target.ips.web,
+      serverResponses: {
+        user: `I want to visit ${target.primaryDomain}`,
+        browser: 'Checking target cache... not found. Asking resolver.',
+        resolver: `I need ${target.rootDomain}. Asking Root.`,
+        root: 'I know the .ops TLD servers. Ask the TLD server.',
+        tld: `${target.rootDomain} is delegated to ${target.hosts.resolver}.`,
+        authoritative: `${target.primaryDomain} has IP ${target.ips.web}.`,
+        ip: `Here! IP: ${target.ips.web}`,
+      },
+    },
+    {
+      id: 2,
+      name: `${target.apiName} Cached Query`,
+      domain: target.hosts.api,
+      recordType: 'A',
+      correctPath: ['user', 'browser', 'resolver', 'tld', 'authoritative', 'ip'],
+      finalIp: target.ips.api,
+      serverResponses: {
+        user: `Let me visit ${target.hosts.api}`,
+        browser: 'Cache miss. Asking resolver...',
+        resolver: `${target.rootDomain} TLD answer is cached. Skip Root.`,
+        root: '',
+        tld: `${target.hosts.api} is served by ${target.hosts.resolver}.`,
+        authoritative: `${target.hosts.api} -> ${target.ips.api}`,
+        ip: `IP Found: ${target.ips.api}`,
+      },
+    },
+    {
+      id: 3,
+      name: `${target.platformName} Mail MX`,
+      domain: target.hosts.mail,
+      recordType: 'MX',
+      correctPath: ['user', 'browser', 'resolver', 'root', 'tld', 'authoritative', 'ip'],
+      finalIp: `10 ${target.hosts.mail}`,
+      serverResponses: {
+        user: `Where is the mail server for ${target.rootDomain}?`,
+        browser: 'Need MX record. Forwarding to resolver.',
+        resolver: 'Looking up MX record. Starting at Root.',
+        root: '.ops TLD servers are here.',
+        tld: `${target.rootDomain} auth server: ${target.hosts.resolver}`,
+        authoritative: `MX record: 10 ${target.hosts.mail} (${target.ips.mail})`,
+        ip: `Mail server IP: ${target.ips.mail}`,
+      },
+    },
+  ];
+}
+
 const DNS_SIMULETOOLS = [
   'dns-resolver',
   'dns-lookup-gui',
@@ -139,7 +196,8 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   ip: <Wifi size={20} strokeWidth={3} className="text-white" />,
 };
 
-export default function DNSResolver({ onScoreChange }: Props) {
+export default function DNSResolver({ onScoreChange, opsContext }: Props) {
+  const levels = useMemo(() => opsContext ? buildOpsLevels(opsContext) : LEVELS, [opsContext]);
   const [currentLevel, setCurrentLevel] = useState(0);
   const [path, setPath] = useState<ServerType[]>([]);
   const [completedPaths, setCompletedPaths] = useState<DNSQuery[]>([]);
@@ -155,17 +213,17 @@ export default function DNSResolver({ onScoreChange }: Props) {
   const [packetPos, setPacketPos] = useState<{ x: number; y: number } | null>(null);
   const [showResponse, setShowResponse] = useState(false);
 
-  const level = LEVELS[currentLevel];
+  const level = levels[currentLevel];
 
   const getServer = (id: ServerType) => SERVERS.find((s) => s.id === id)!;
 
   // Initialize message on mount
   useEffect(() => {
     if (message === '') {
-      setMessage(`Level 1: ${LEVELS[0].name} - Resolving ${LEVELS[0].domain}`);
+      setMessage(`Level 1: ${levels[0].name} - Resolving ${levels[0].domain}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [levels, message]);
 
   const handleServerClick = useCallback(
     (serverId: ServerType) => {
@@ -221,7 +279,7 @@ export default function DNSResolver({ onScoreChange }: Props) {
             return u;
           });
 
-          if (currentLevel >= LEVELS.length - 1) {
+          if (currentLevel >= levels.length - 1) {
             setAllComplete(true);
             setMessage(`Domain resolved! IP: ${level.finalIp}`);
           } else {
@@ -243,7 +301,7 @@ export default function DNSResolver({ onScoreChange }: Props) {
   );
 
   const handleNextLevel = () => {
-    if (currentLevel < LEVELS.length - 1) {
+    if (currentLevel < levels.length - 1) {
       const next = currentLevel + 1;
       setCurrentLevel(next);
       setPath([]);
@@ -252,7 +310,7 @@ export default function DNSResolver({ onScoreChange }: Props) {
       setLevelComplete(false);
       setAttempts(0);
       setShowResponse(false);
-      setMessage(`Level ${next + 1}: ${LEVELS[next].name} - Resolving ${LEVELS[next].domain}`);
+      setMessage(`Level ${next + 1}: ${levels[next].name} - Resolving ${levels[next].domain}`);
     }
   };
 
@@ -278,7 +336,7 @@ export default function DNSResolver({ onScoreChange }: Props) {
     setLevelScores([null, null, null]);
     setLevelStars([null, null, null]);
     setShowResponse(false);
-    setMessage(`Level 1: ${LEVELS[0].name} - Resolving ${LEVELS[0].domain}`);
+    setMessage(`Level 1: ${levels[0].name} - Resolving ${levels[0].domain}`);
     onScoreChange(0);
   };
 

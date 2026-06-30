@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import type { OpsContextProps } from '@/lib/opsContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Server,
@@ -12,7 +13,7 @@ import {
   ArrowDown,
 } from 'lucide-react';
 
-interface LoadBalancerProps {
+interface LoadBalancerProps extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -47,9 +48,23 @@ const INITIAL_SERVERS: ServerNode[] = [
   { id: 3, name: 'Server D', connections: 0, maxCapacity: 8, health: 100, active: true, weight: 2, color: '#FACC15' },
 ];
 
-export default function LoadBalancer({ onScoreChange }: LoadBalancerProps) {
+export default function LoadBalancer({ onScoreChange, opsContext }: LoadBalancerProps) {
+  const clientIps = useMemo(() => opsContext ? [
+    opsContext.target.ips.client,
+    opsContext.target.ips.attacker,
+    opsContext.target.ips.web,
+    opsContext.target.ips.api,
+    opsContext.target.ips.vendor,
+    opsContext.target.ips.backup,
+  ] : CLIENT_IPS, [opsContext]);
+  const initialServers = useMemo(() => opsContext ? [
+    { ...INITIAL_SERVERS[0], name: opsContext.target.services[0]?.label ?? opsContext.target.hosts.app },
+    { ...INITIAL_SERVERS[1], name: opsContext.target.services[1]?.label ?? opsContext.target.hosts.api },
+    { ...INITIAL_SERVERS[2], name: opsContext.target.services[7]?.label ?? opsContext.target.hosts.vendor },
+    { ...INITIAL_SERVERS[3], name: opsContext.target.services[5]?.label ?? opsContext.target.hosts.backup },
+  ] : INITIAL_SERVERS, [opsContext]);
   const [algorithm, setAlgorithm] = useState<Algorithm>('round-robin');
-  const [servers, setServers] = useState<ServerNode[]>(INITIAL_SERVERS);
+  const [servers, setServers] = useState<ServerNode[]>(initialServers);
   const [packets, setPackets] = useState<Packet[]>([]);
   const [score, setScore] = useState(0);
   const [gameActive, setGameActive] = useState(false);
@@ -150,7 +165,7 @@ export default function LoadBalancer({ onScoreChange }: LoadBalancerProps) {
       if (Math.random() < 0.4) {
         setPacketIdCounter((prev) => {
           const newId = prev + 1;
-          const clientIp = CLIENT_IPS[Math.floor(Math.random() * CLIENT_IPS.length)];
+          const clientIp = clientIps[Math.floor(Math.random() * clientIps.length)];
           const color = PACKET_COLORS[Math.floor(Math.random() * PACKET_COLORS.length)];
           const newPacket: Packet = {
             id: newId,
@@ -239,9 +254,9 @@ export default function LoadBalancer({ onScoreChange }: LoadBalancerProps) {
     setCorrectAssignments(0);
     setRoundRobinIdx(0);
     setOverloadWarning('');
-    setServers(INITIAL_SERVERS.map((s) => ({ ...s, connections: 0, health: 100, active: true })));
+    setServers(initialServers.map((s) => ({ ...s, connections: 0, health: 100, active: true })));
     onScoreChange(0);
-    setMessage(`Level 1: ${algorithmLabels[algorithm]} — Click incoming packets to route them!`);
+    setMessage(`Level 1: ${algorithmLabels[algorithm]} - route ${opsContext?.target.platformName ?? "target"} packets to the right service!`);
   };
 
   const resetGame = () => {
@@ -253,7 +268,7 @@ export default function LoadBalancer({ onScoreChange }: LoadBalancerProps) {
     setCorrectAssignments(0);
     setRoundRobinIdx(0);
     setOverloadWarning('');
-    setServers(INITIAL_SERVERS.map((s) => ({ ...s, connections: 0, health: 100, active: true })));
+    setServers(initialServers.map((s) => ({ ...s, connections: 0, health: 100, active: true })));
     onScoreChange(0);
     setMessage('Select an algorithm and start distributing traffic!');
   };
@@ -285,6 +300,7 @@ export default function LoadBalancer({ onScoreChange }: LoadBalancerProps) {
       {/* Message */}
       <div className="w-full bg-blue-info/20 rounded-xl border-[3px] border-blue-info p-2 text-center">
         <p className="font-nunito text-sm text-purple-dark">{message}</p>
+        {opsContext && <p className="font-mono text-[10px] font-bold text-purple-primary">{opsContext.target.primaryDomain} / {opsContext.target.networkCidr}</p>}
       </div>
 
       {/* Algorithm Selector */}

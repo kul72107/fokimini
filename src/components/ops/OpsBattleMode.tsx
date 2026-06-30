@@ -57,6 +57,7 @@ import {
   type OpsProgress,
   type OpsDefenseControl,
 } from '@/lib/opsEngine';
+import { createOpsTargetProfile } from '@/lib/opsContext';
 import OpsSimuleToolModal from './OpsSimuleToolModal';
 
 export type { OpsMatchSummary };
@@ -177,6 +178,7 @@ export function OpsBattleMode({
   const [finished, setFinished] = useState(false);
   const [activeToolRun, setActiveToolRun] = useState<AttackTool | null>(null);
 
+  const targetProfile = useMemo(() => createOpsTargetProfile(target), [target]);
   const ownedIds = useMemo(() => new Set(getUserTools(user.id).map((tool) => tool.id)), [user.id]);
   const selectedObjective = OPS_OBJECTIVES.find((objective) => objective.id === selectedObjectiveId) ?? OPS_OBJECTIVES[0];
   const selectedProgress = progressMap[selectedObjective.id];
@@ -335,7 +337,7 @@ export function OpsBattleMode({
             <div>
               <h1 className="font-fredoka text-3xl font-black text-purple-darker text-outline-sm">CYBERPAW OPS</h1>
               <p className="font-nunito text-sm font-bold text-purple-dark">
-                Timed objective raid against {target.displayName}
+                Timed objective raid against {targetProfile.platformName} ({targetProfile.primaryDomain})
               </p>
             </div>
           </div>
@@ -388,6 +390,12 @@ export function OpsBattleMode({
           <div className="flex items-center gap-2">
             <Sparkles size={20} strokeWidth={3} className="text-purple-primary" />
             <h2 className="font-fredoka text-xl font-black text-purple-darker">Operation Assets</h2>
+          </div>
+          <div className="mt-2 rounded-xl border-[3px] border-black bg-purple-pale p-3">
+            <p className="font-nunito text-[10px] font-black uppercase text-purple-primary">Target profile</p>
+            <p className="font-nunito text-xs font-black text-purple-darker">{targetProfile.orgName}</p>
+            <p className="font-mono text-[10px] font-bold text-purple-dark break-all">{targetProfile.primaryDomain}</p>
+            <p className="font-mono text-[10px] font-bold text-purple-dark break-all">{targetProfile.databaseName}</p>
           </div>
           <div className="mt-3 flex min-h-[92px] flex-wrap content-start gap-2">
             {pinnedEffects.length === 0 ? (

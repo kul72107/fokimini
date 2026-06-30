@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShieldAlert, Check, X, Zap, Trophy, ChevronRight, RotateCcw,
@@ -6,8 +6,9 @@ import {
   Sparkles, MessageSquare, UserCircle, Globe, Lock, Unlock,
   Fingerprint, Layers, XOctagon, FileWarning
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -56,6 +57,32 @@ const TARGETS: Target[] = [
     inputPlaceholder: 'Your display name...',
   },
 ];
+
+function buildOpsTargets({ target }: NonNullable<OpsContextProps['opsContext']>): Target[] {
+  return [
+    {
+      id: 'comment',
+      label: `${target.platformName} Comments`,
+      icon: <MessageSquare size={20} strokeWidth={3} />,
+      previewHtml: `<div class="comments"><h3>${target.platformName} Comments</h3><div class="comment"><b>${target.standardUser}:</b> Review queued for ${target.widgetName}</div><div class="comment"><b>${target.serviceAccount}:</b> [PAYLOAD]</div></div>`,
+      inputPlaceholder: `Comment as ${target.standardUser}`,
+    },
+    {
+      id: 'search',
+      label: `${target.apiName} Search`,
+      icon: <Search size={20} strokeWidth={3} />,
+      previewHtml: `<div class="search-results"><h3>${target.apiName} results for: [PAYLOAD]</h3><p>${target.databaseName}: 0 matching rows</p></div>`,
+      inputPlaceholder: `Search ${target.databaseName}`,
+    },
+    {
+      id: 'profile',
+      label: `${target.platformName} Profile`,
+      icon: <UserCircle size={20} strokeWidth={3} />,
+      previewHtml: `<div class="profile"><h2>${target.platformName} Profile</h2><p>Name: [PAYLOAD]</p><p>Bio: ${target.adminUser}</p></div>`,
+      inputPlaceholder: `Display name for ${target.standardUser}`,
+    },
+  ];
+}
 
 const PAYLOADS: XSSPayload[] = [
   {
@@ -125,8 +152,10 @@ const CATEGORY_COLORS: Record<XSSType, string> = {
   safe: '#4ADE80',
 };
 
-export default function XSSTester({ onScoreChange }: Props) {
-  const [targetUrl, setTargetUrl] = useState('');
+export default function XSSTester({ onScoreChange, opsContext }: Props) {
+  const targets = useMemo(() => opsContext ? buildOpsTargets(opsContext) : TARGETS, [opsContext]);
+  const defaultTargetUrl = opsContext ? `https://${opsContext.target.primaryDomain}${opsContext.target.cmsPath}` : '';
+  const [targetUrl, setTargetUrl] = useState(defaultTargetUrl);
   const [selectedTarget, setSelectedTarget] = useState<TargetType>('comment');
   const [inputValue, setInputValue] = useState('');
   const [selectedPayload, setSelectedPayload] = useState<XSSPayload | null>(null);
@@ -142,7 +171,7 @@ export default function XSSTester({ onScoreChange }: Props) {
   const [expandedCategory, setExpandedCategory] = useState<XSSType | null>('reflected');
   const [attemptCounter, setAttemptCounter] = useState(0);
 
-  const currentTarget = TARGETS.find(t => t.id === selectedTarget) || TARGETS[0];
+  const currentTarget = targets.find(t => t.id === selectedTarget) || targets[0];
 
   const addScore = useCallback((points: number) => {
     setScore(prev => {
@@ -212,7 +241,7 @@ export default function XSSTester({ onScoreChange }: Props) {
           </div>
           <div>
             <h2 className="text-2xl font-fredoka text-purple-darker text-outline-sm">XSS Tester</h2>
-            <p className="text-sm text-purple-dark font-nunito">Find cross-site scripting vulnerabilities!</p>
+            <p className="text-sm text-purple-dark font-nunito">Test the active target surface for app-layer script handling.</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -238,10 +267,10 @@ export default function XSSTester({ onScoreChange }: Props) {
             type="text"
             value={targetUrl}
             onChange={e => setTargetUrl(e.target.value)}
-            placeholder="http://target-site.com"
+            placeholder={opsContext ? `https://${opsContext.target.primaryDomain}${opsContext.target.cmsPath}` : 'http://target-site.com'}
             className="flex-1 min-w-[200px] px-4 py-2 rounded-xl border-4 border-black font-mono text-sm focus:outline-none focus:ring-4 focus:ring-purple-primary bg-purple-pale"
           />
-          {TARGETS.map(t => (
+          {targets.map(t => (
             <button
               key={t.id}
               onClick={() => { setSelectedTarget(t.id); reset(); }}
@@ -353,7 +382,7 @@ export default function XSSTester({ onScoreChange }: Props) {
             <div className="bg-purple-pale rounded-t-xl border-[3px] border-black border-b-0 p-2 flex items-center gap-2">
               <Lock size={14} strokeWidth={3} color="#4ADE80" />
               <span className="font-mono text-xs text-purple-darker truncate">
-                {targetUrl || 'http://demo-site.com/' + selectedTarget}
+                {targetUrl || (opsContext ? `https://${opsContext.target.primaryDomain}/${selectedTarget}` : 'http://demo-site.com/' + selectedTarget)}
               </span>
             </div>
 
@@ -404,7 +433,7 @@ export default function XSSTester({ onScoreChange }: Props) {
                   >
                     <div className="bg-yellow-accent px-4 py-2 rounded-2xl border-4 border-black flex items-center gap-2">
                       <Cookie size={20} strokeWidth={3} />
-                      <span className="font-fredoka text-sm">Cookies stolen!</span>
+                      <span className="font-fredoka text-sm">{opsContext ? `${opsContext.target.sessionCookieName} exposed` : 'Cookies stolen!'}</span>
                     </div>
                     {[...Array(5)].map((_, i) => (
                       <motion.div

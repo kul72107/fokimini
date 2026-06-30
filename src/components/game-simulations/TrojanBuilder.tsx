@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bug, Shield, ShieldCheck, ShieldAlert, Play, RotateCcw, Trophy,
@@ -6,8 +6,9 @@ import {
   Check, X, ArrowRight, Layers, Cpu, Wifi, HardDrive, FileDown,
   Sparkles, Target, Radio, Timer, Settings
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -66,7 +67,47 @@ const DEFENSES = [
   { name: 'Heuristic Analysis', icon: <Shield size={16} strokeWidth={3} />, power: 80 },
 ];
 
-export default function TrojanBuilder({ onScoreChange }: Props) {
+function bindComponentsToTarget(components: TrojanComponent[], opsContext?: OpsContextProps['opsContext']): TrojanComponent[] {
+  if (!opsContext) return components;
+  const { target } = opsContext;
+  const descriptions: Record<string, string> = {
+    email: `Lab-only attachment route for ${target.supportEmail}`,
+    usb: `Simulated removable-media lane near ${target.hosts.backup}`,
+    download: `Fake download exercise under ${target.cmsPath}`,
+    macro: `Document macro drill for ${target.safePayloadName}`,
+    keylog: `Telemetry drill against ${target.sessionCookieName}`,
+    screenshot: `Screen sample from ${target.platformName} console`,
+    filesteal: `Collects only the proof marker ${target.backupName}`,
+    cryptominer: `CPU spike decoy on ${target.hosts.api}`,
+    registry: `Startup check for ${target.serviceAccount}`,
+    service: `Service persistence drill on ${target.hosts.api}`,
+    scheduled: `Recurring task drill for ${target.backupName}`,
+    dll: `DLL integrity check for ${target.widgetName}`,
+    http: `HTTP callback simulation to ${target.hosts.api}`,
+    dns: `DNS tunnel simulation through ${target.hosts.resolver}`,
+    https: `HTTPS beacon simulation to ${target.primaryDomain}`,
+    p2p: `Peer mesh simulation with ${target.hosts.vendor}`,
+  };
+  return components.map((component) => ({
+    ...component,
+    description: descriptions[component.id] ?? `${component.description} on ${target.platformName}`,
+  }));
+}
+
+function bindDefensesToTarget(opsContext?: OpsContextProps['opsContext']) {
+  if (!opsContext) return DEFENSES;
+  const { target } = opsContext;
+  return [
+    { ...DEFENSES[0], name: `${target.platformName} Endpoint Guard` },
+    { ...DEFENSES[1], name: `${target.hosts.admin} Firewall` },
+    { ...DEFENSES[2], name: `${target.orgName} Behavior Monitor` },
+    { ...DEFENSES[3], name: `${target.apiName} Heuristic Check` },
+  ];
+}
+
+export default function TrojanBuilder({ onScoreChange, opsContext }: Props) {
+  const componentPalette = useMemo(() => bindComponentsToTarget(COMPONENT_PALETTE, opsContext), [opsContext]);
+  const defenses = useMemo(() => bindDefensesToTarget(opsContext), [opsContext]);
   const [stage, setStage] = useState<Stage>('build');
   const [assembly, setAssembly] = useState<AssembledPart[]>([]);
   const [score, setScore] = useState(0);
@@ -108,7 +149,7 @@ export default function TrojanBuilder({ onScoreChange }: Props) {
       const avgDetect = assembly.length > 0 ? totalDetect / assembly.length : 0;
 
       const detected: string[] = [];
-      DEFENSES.forEach(def => {
+      defenses.forEach(def => {
         if (avgDetect > def.power - totalBypass * 0.3) {
           detected.push(def.name);
         }
@@ -160,7 +201,12 @@ export default function TrojanBuilder({ onScoreChange }: Props) {
           </div>
           <div>
             <h2 className="text-2xl font-fredoka text-purple-darker text-outline-sm">Trojan Builder</h2>
-            <p className="text-sm text-purple-dark font-nunito">Build and test trojan components!</p>
+            <p className="text-sm text-purple-dark font-nunito">Assemble a lab-only chain against the active target defenses.</p>
+            {opsContext && (
+              <p className="font-mono text-[10px] font-bold text-purple-primary">
+                {opsContext.target.primaryDomain} / {opsContext.target.safePayloadName}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -265,7 +311,7 @@ export default function TrojanBuilder({ onScoreChange }: Props) {
               </div>
               {/* Components */}
               <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {COMPONENT_PALETTE.filter(c => c.type === activeTab).map(comp => {
+                {componentPalette.filter(c => c.type === activeTab).map(comp => {
                   const colors = COMPONENT_COLORS[comp.type];
                   const isMaxed = assembly.filter(p => p.component.type === comp.type).length >= 2;
                   return (
@@ -324,7 +370,7 @@ export default function TrojanBuilder({ onScoreChange }: Props) {
                     >
                       <Layers size={48} strokeWidth={2} className="mx-auto mb-2" />
                       <p className="font-fredoka text-sm">Click components to assemble your trojan</p>
-                      <p className="text-xs font-nunito mt-1">Need: Dropper → Payload → Persistence → Comm</p>
+                      <p className="text-xs font-nunito mt-1">Need: Dropper to Payload to Persistence to Comm</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -484,7 +530,7 @@ export default function TrojanBuilder({ onScoreChange }: Props) {
 
             {/* Defense Grid */}
             <div className="grid grid-cols-2 gap-3 mb-6">
-              {DEFENSES.map((def, i) => (
+              {defenses.map((def, i) => (
                 <motion.div
                   key={def.name}
                   initial={{ scale: 0 }}
@@ -628,16 +674,16 @@ export default function TrojanBuilder({ onScoreChange }: Props) {
                   </h4>
                   <ul className="space-y-1 text-xs font-nunito text-purple-dark">
                     {assembly.some(p => p.component.type === 'dropper') && (
-                      <li>• Monitor email attachments and USB insertions</li>
+                      <li>- Monitor email attachments and USB insertions</li>
                     )}
                     {assembly.some(p => p.component.type === 'payload') && (
-                      <li>• Watch for unusual CPU usage and network activity</li>
+                      <li>- Watch for unusual CPU usage and network activity</li>
                     )}
                     {assembly.some(p => p.component.type === 'persistence') && (
-                      <li>• Check registry run keys and scheduled tasks</li>
+                      <li>- Check registry run keys and scheduled tasks</li>
                     )}
                     {assembly.some(p => p.component.type === 'comm') && (
-                      <li>• Monitor DNS queries and outbound HTTPS connections</li>
+                      <li>- Monitor DNS queries and outbound HTTPS connections</li>
                     )}
                   </ul>
                 </div>
@@ -649,11 +695,11 @@ export default function TrojanBuilder({ onScoreChange }: Props) {
                     Defense Recommendations
                   </h4>
                   <ul className="space-y-1 text-xs font-nunito text-purple-dark">
-                    <li>• Keep antivirus definitions up to date</li>
-                    <li>• Use application whitelisting</li>
-                    <li>• Enable behavioral monitoring (EDR)</li>
-                    <li>• Network segmentation and traffic inspection</li>
-                    <li>• Regular security awareness training</li>
+                    <li>- Keep antivirus definitions up to date</li>
+                    <li>- Use application whitelisting</li>
+                    <li>- Enable behavioral monitoring (EDR)</li>
+                    <li>- Network segmentation and traffic inspection</li>
+                    <li>- Regular security awareness training</li>
                   </ul>
                 </div>
               </div>

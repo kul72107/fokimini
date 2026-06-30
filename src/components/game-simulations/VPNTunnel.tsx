@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import type { OpsContextProps } from '@/lib/opsContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Lock, Unlock, Shield, Key, Server, Wifi, Globe, ArrowRight,
@@ -6,7 +7,7 @@ import {
   Monitor, Building2, Fingerprint, FileKey
 } from 'lucide-react';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -27,27 +28,31 @@ const VPN_LEVELS: VPNLevel[] = [
   {
     id: 1,
     name: 'Remote Access VPN',
-    description: 'A remote worker connects to the office network securely.',
+    description: 'A target user connects to the target VPN lane securely.',
     vpnType: 'remote_access',
     label: 'Remote Access',
   },
   {
     id: 2,
     name: 'Site-to-Site VPN',
-    description: 'Two office locations connect their networks together.',
+    description: 'The target app lane connects to the target backup lane.',
     vpnType: 'site_to_site',
     label: 'Site-to-Site',
   },
   {
     id: 3,
     name: 'SSL VPN',
-    description: 'Secure web-based VPN using the browser.',
+    description: 'Secure browser VPN into the target admin surface.',
     vpnType: 'ssl_vpn',
     label: 'SSL VPN',
   },
 ];
 
-export default function VPNTunnel({ onScoreChange }: Props) {
+export default function VPNTunnel({ onScoreChange, opsContext }: Props) {
+  const leftLabel = opsContext ? (opsContext.target.standardUser) : 'Remote User';
+  const rightLabel = opsContext ? opsContext.target.hosts.vpn : 'VPN Server';
+  const leftIp = opsContext?.target.ips.client ?? '10.8.0.2';
+  const rightIp = opsContext?.target.ips.vpn ?? '10.8.0.1';
   const [currentLevel, setCurrentLevel] = useState(0);
   const [step, setStep] = useState<VPNStep>('idle');
   const [authMethod, setAuthMethod] = useState<AuthMethod | null>(null);
@@ -81,7 +86,7 @@ export default function VPNTunnel({ onScoreChange }: Props) {
     setStep(nextStep);
     switch (nextStep) {
       case 'initiate':
-        setMessage('Connection initiated! The VPN client contacts the server.');
+        setMessage('Connection initiated! The target client contacts the VPN service.');
         break;
       case 'auth':
         setMessage('Authentication required! Choose a method to prove your identity.');
@@ -92,7 +97,7 @@ export default function VPNTunnel({ onScoreChange }: Props) {
         setMessage(`Key exchange complete! ${authMethod === 'password' ? 'Pre-shared key' : 'Certificate-based'} authentication successful. Encryption keys generated!`);
         break;
       case 'tunnel':
-        setMessage('VPN Tunnel ESTABLISHED! All traffic is now encrypted. Choose tunnel mode.');
+        setMessage('VPN Tunnel ESTABLISHED for the target route. Choose tunnel mode.');
         break;
       case 'send_packet':
         setMessage('Sending encrypted packets through the tunnel!');
@@ -117,7 +122,7 @@ export default function VPNTunnel({ onScoreChange }: Props) {
           });
           if (currentLevel >= VPN_LEVELS.length - 1) {
             setAllComplete(true);
-            setMessage('All VPN types configured! You are a VPN master!');
+            setMessage('All target VPN routes configured.');
           } else {
             setMessage(`Level ${level.id} Complete! Secure tunnel operational!`);
           }
@@ -171,7 +176,7 @@ export default function VPNTunnel({ onScoreChange }: Props) {
       <div className="text-center">
         <h2 className="font-fredoka text-2xl text-purple-dark text-outline-sm">VPN Tunnel</h2>
         <p className="font-nunito text-xs text-purple-dark mt-1">
-          Build a secure VPN tunnel step by step!
+          Build the target VPN tunnel step by step!
         </p>
       </div>
 
@@ -217,11 +222,11 @@ export default function VPNTunnel({ onScoreChange }: Props) {
               )}
             </motion.div>
             <span className="font-nunito text-[10px] font-bold text-purple-dark mt-1 bg-white border-2 border-black rounded-full px-2 py-0.5">
-              {level.vpnType === 'site_to_site' ? 'Office A' : 'Remote User'}
+              {level.vpnType === 'site_to_site' ? opsContext?.target.hosts.app ?? 'Office A' : leftLabel}
             </span>
             {isTunnelActive && (
               <span className="font-mono text-[8px] text-green-success mt-0.5">
-                10.8.0.2
+                {leftIp}
               </span>
             )}
           </div>
@@ -376,11 +381,11 @@ export default function VPNTunnel({ onScoreChange }: Props) {
               )}
             </motion.div>
             <span className="font-nunito text-[10px] font-bold text-purple-dark mt-1 bg-white border-2 border-black rounded-full px-2 py-0.5">
-              {level.vpnType === 'site_to_site' ? 'Office B' : 'VPN Server'}
+              {level.vpnType === 'site_to_site' ? opsContext?.target.hosts.backup ?? 'Office B' : rightLabel}
             </span>
             {isTunnelActive && (
               <span className="font-mono text-[8px] text-green-success mt-0.5">
-                10.8.0.1
+                {rightIp}
               </span>
             )}
           </div>

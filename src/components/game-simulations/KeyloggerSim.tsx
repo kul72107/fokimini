@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Keyboard, Eye, EyeOff, Trophy, Lock, Unlock, Monitor,
@@ -6,8 +6,9 @@ import {
   RotateCcw, Zap, FileText, Sparkles, ChevronDown, User, Ghost,
   KeyRound, Trash2, Pause, Play, Check
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface Props {
+interface Props extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -46,6 +47,15 @@ const DEMO_PASSWORDS: PasswordEntry[] = [
   { id: '4', username: 'coder@dev.io', password: 'GitHubRocks999', website: 'Code Repo', captured: false },
 ];
 
+function buildOpsPasswords({ target }: NonNullable<OpsContextProps['opsContext']>): PasswordEntry[] {
+  return [
+    { id: '1', username: target.adminEmail, password: `${target.targetName.replace(/\s+/g, '')}!${target.targetId}Admin`, website: `${target.platformName} Admin`, captured: false },
+    { id: '2', username: target.userEmail, password: `${target.proofPhrase.replace(/\s+/g, '')}!`, website: `${target.platformName} Login`, captured: false },
+    { id: '3', username: target.serviceAccount, password: `${target.apiKeyName.slice(0, 8)}-${target.xorKey}`, website: target.apiName, captured: false },
+    { id: '4', username: target.engineerEmail, password: `${target.backupName.slice(0, 10)}#26`, website: target.backupName, captured: false },
+  ];
+}
+
 const CAPTURE_MODES: { id: CaptureMode; label: string; icon: React.ReactNode; desc: string }[] = [
   { id: 'all', label: 'All Keys', icon: <Keyboard size={16} strokeWidth={3} />, desc: 'Capture every keystroke' },
   { id: 'window', label: 'Window-Specific', icon: <Target size={16} strokeWidth={3} />, desc: 'Only target window' },
@@ -60,14 +70,24 @@ const EDUCATION_TIPS = [
   { title: '2FA Protection', text: 'Two-factor authentication protects you even if your password is keylogged, since the attacker also needs your second factor.' },
 ];
 
-export default function KeyloggerSim({ onScoreChange }: Props) {
+export default function KeyloggerSim({ onScoreChange, opsContext }: Props) {
+  const passwords = useMemo(() => opsContext ? buildOpsPasswords(opsContext) : DEMO_PASSWORDS, [opsContext]);
+  const windows = useMemo(() => opsContext
+    ? [
+        `Browser - ${opsContext.target.platformName} Login`,
+        `${opsContext.target.apiName} Console`,
+        `${opsContext.target.backupName} Viewer`,
+        `${opsContext.target.widgetName} Sandbox`,
+        'Terminal',
+      ]
+    : ['Browser - Login Page', 'Notepad', 'Email Client', 'File Manager', 'Terminal'], [opsContext]);
   const [viewMode, setViewMode] = useState<ViewMode>('split');
   const [captureMode, setCaptureMode] = useState<CaptureMode>('all');
   const [capturedKeys, setCapturedKeys] = useState<CapturedKey[]>([]);
   const [score, setScore] = useState(0);
   const [keysCaptured, setKeysCaptured] = useState(0);
   const [passwordsFound, setPasswordsFound] = useState(0);
-  const [activeWindow, setActiveWindow] = useState('Browser - Login Page');
+  const [activeWindow, setActiveWindow] = useState(windows[0]);
   const [victimInput, setVictimInput] = useState('');
   const [showEducation, setShowEducation] = useState(false);
   const [isKeyloggerActive, setIsKeyloggerActive] = useState(true);
@@ -95,7 +115,7 @@ export default function KeyloggerSim({ onScoreChange }: Props) {
 
     // Check capture mode filtering
     if (captureMode === 'password' && !isPasswordField) return;
-    if (captureMode === 'window' && activeWindow !== 'Browser - Login Page') return;
+    if (captureMode === 'window' && activeWindow !== windows[0]) return;
 
     const newCapture: CapturedKey = {
       id: `${Date.now()}-${Math.random()}`,
@@ -111,7 +131,7 @@ export default function KeyloggerSim({ onScoreChange }: Props) {
 
     // Check for password detection
     if (isPasswordField && victimInput.length > 4) {
-      const match = DEMO_PASSWORDS.find(p =>
+      const match = passwords.find(p =>
         !p.captured && victimInput.includes(p.password.slice(0, 4))
       );
       if (match && Math.random() > 0.7) {
@@ -122,7 +142,7 @@ export default function KeyloggerSim({ onScoreChange }: Props) {
         setTimeout(() => setFoundPassword(null), 4000);
       }
     }
-  }, [isKeyloggerActive, captureMode, activeWindow, victimInput, addScore]);
+  }, [isKeyloggerActive, captureMode, activeWindow, victimInput, passwords, windows, addScore]);
 
   const handleKeyPress = (key: string) => {
     // Animate key
@@ -142,7 +162,7 @@ export default function KeyloggerSim({ onScoreChange }: Props) {
       captureKey('[ENTER]', victimInput.length > 0);
       if (victimInput.length > 0) {
         // Check if input looks like a password
-        DEMO_PASSWORDS.forEach(p => {
+        passwords.forEach(p => {
           if (!p.captured && victimInput.includes(p.password)) {
             p.captured = true;
             setFoundPassword(p);
@@ -185,10 +205,8 @@ export default function KeyloggerSim({ onScoreChange }: Props) {
     setPasswordsFound(0);
     setFoundPassword(null);
     setClipboardContent('');
-    DEMO_PASSWORDS.forEach(p => p.captured = false);
+    passwords.forEach(p => p.captured = false);
   };
-
-  const windows = ['Browser - Login Page', 'Notepad', 'Email Client', 'File Manager', 'Terminal'];
 
   return (
     <div className="w-full min-h-[600px] bg-purple-pale p-4 font-nunito">
@@ -421,14 +439,14 @@ export default function KeyloggerSim({ onScoreChange }: Props) {
                 <Lock size={18} strokeWidth={3} />
                 Captured Passwords
               </h3>
-              {DEMO_PASSWORDS.filter(p => p.captured).length === 0 ? (
+              {passwords.filter(p => p.captured).length === 0 ? (
                 <div className="text-center py-6 text-purple-light">
                   <Lock size={32} strokeWidth={2} className="mx-auto mb-2 opacity-30" />
                   <p className="text-sm font-nunito">No passwords captured yet</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {DEMO_PASSWORDS.filter(p => p.captured).map(p => (
+                  {passwords.filter(p => p.captured).map(p => (
                     <motion.div
                       key={p.id}
                       initial={{ scale: 0.8 }}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe,
@@ -19,8 +19,9 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
+import type { OpsContextProps } from '@/lib/opsContext';
 
-interface ProxyServerProps {
+interface ProxyServerProps extends OpsContextProps {
   onScoreChange: (score: number) => void;
 }
 
@@ -56,13 +57,27 @@ const WEBSITES: Website[] = [
 
 const PROXY_IP = '203.0.113.10';
 
-export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
+function buildOpsWebsites({ target }: NonNullable<OpsContextProps['opsContext']>): Website[] {
+  return [
+    { id: 'app', name: `${target.platformName} App`, url: target.primaryDomain, icon: 'A', color: '#4ADE80' },
+    { id: 'api', name: target.apiName, url: target.hosts.api, icon: 'P', color: '#60A5FA' },
+    { id: 'admin', name: `${target.platformName} Admin`, url: target.hosts.admin, icon: 'M', color: '#FACC15' },
+    { id: 'vendor', name: target.widgetName, url: target.hosts.vendor, icon: 'W', color: '#A78BFA' },
+    { id: 'backup', name: target.backupName, url: target.hosts.backup, icon: 'B', color: '#FB923C' },
+    { id: 'legacy', name: `${target.platformName} Legacy`, url: target.hosts.old, icon: 'L', color: '#F87171' },
+  ];
+}
+
+export default function ProxyServer({ onScoreChange, opsContext }: ProxyServerProps) {
+  const websites = useMemo(() => opsContext ? buildOpsWebsites(opsContext) : WEBSITES, [opsContext]);
+  const proxyIp = opsContext?.target.ips.vpn ?? PROXY_IP;
+  const blockedSites = useMemo(() => opsContext ? ['legacy'] : ['reddit'], [opsContext]);
   const [gameActive, setGameActive] = useState(false);
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState(1);
   const [cache, setCache] = useState<CacheEntry[]>([]);
   const [activeFlow, setActiveFlow] = useState<RequestFlow | null>(null);
-  const [clientRealIp, setClientRealIp] = useState('192.168.1.50');
+  const [clientRealIp, setClientRealIp] = useState(opsContext?.target.ips.client ?? '192.168.1.50');
   const [selectedWebsite, setSelectedWebsite] = useState<string | null>(null);
   const [message, setMessage] = useState('Select a website to start the request flow!');
   const [requestCount, setRequestCount] = useState(0);
@@ -71,7 +86,6 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
   const [totalResponseTime, setTotalResponseTime] = useState(0);
   const [showStart, setShowStart] = useState(true);
   const [contentFilterOn, setContentFilterOn] = useState(false);
-  const [blockedSites] = useState<string[]>(['reddit']);
   const [responseTimeWithoutProxy, setResponseTimeWithoutProxy] = useState(0);
   const [requestIdCounter, setRequestIdCounter] = useState(0);
 
@@ -93,7 +107,7 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
     if (!gameActive || activeFlow) return;
 
     if (contentFilterOn && blockedSites.includes(websiteId)) {
-      setMessage(`Blocked by content filter! ${WEBSITES.find((w) => w.id === websiteId)?.name} is not allowed.`);
+      setMessage(`Blocked by content filter! ${websites.find((w) => w.id === websiteId)?.name} is not allowed.`);
       const newScore = score - 5;
       setScore(Math.max(0, newScore));
       onScoreChange(Math.max(0, newScore));
@@ -113,7 +127,7 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
     };
 
     setActiveFlow(flow);
-    setMessage(`Request to ${WEBSITES.find((w) => w.id === websiteId)?.name} started...`);
+    setMessage(`Request to ${websites.find((w) => w.id === websiteId)?.name} started...`);
 
     // Animate through stages
     const stages: RequestFlow['stage'][] = cached
@@ -152,14 +166,14 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
       const newScore = score + 15;
       setScore(newScore);
       onScoreChange(Math.min(100, newScore));
-      setMessage(`Cache HIT! ${WEBSITES.find((w) => w.id === websiteId)?.name} loaded instantly from cache. (${responseTime}ms)`);
+      setMessage(`Cache HIT! ${websites.find((w) => w.id === websiteId)?.name} loaded instantly from cache. (${responseTime}ms)`);
     } else {
       setCacheMisses((prev) => prev + 1);
       setCache((prev) => [...prev, { websiteId, timestamp: Date.now(), hitCount: 0 }]);
       const newScore = score + 10;
       setScore(newScore);
       onScoreChange(Math.min(100, newScore));
-      setMessage(`Cache MISS. Fetched ${WEBSITES.find((w) => w.id === websiteId)?.name} from Internet. (${responseTime}ms)`);
+      setMessage(`Cache MISS. Fetched ${websites.find((w) => w.id === websiteId)?.name} from target network. (${responseTime}ms)`);
     }
 
     if (requestCount + 1 >= 6 && level < 3) {
@@ -174,7 +188,7 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
 
   const clearCache = () => {
     setCache([]);
-    setMessage('Cache cleared! All subsequent requests will fetch from the Internet.');
+    setMessage(`Cache cleared! All subsequent requests will fetch from ${opsContext ? opsContext.target.platformName : 'the Internet'}.`);
   };
 
   const startGame = () => {
@@ -190,7 +204,7 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
     setResponseTimeWithoutProxy(0);
     setShowStart(false);
     onScoreChange(0);
-    setMessage('Forward Proxy Mode: Click a website to see the request flow!');
+    setMessage(`Forward Proxy Mode: Click a ${opsContext ? 'target service' : 'website'} to see the request flow!`);
   };
 
   const resetGame = () => {
@@ -221,9 +235,9 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
       case 'proxy-check':
         return 'Proxy checks cache...';
       case 'proxy-to-internet':
-        return 'Proxy → Internet';
+        return opsContext ? 'Proxy -> Target Net' : 'Proxy -> Internet';
       case 'internet-to-proxy':
-        return 'Internet → Proxy';
+        return opsContext ? 'Target Net -> Proxy' : 'Internet -> Proxy';
       case 'proxy-to-client':
         return 'Proxy → Client';
       case 'cache-hit':
@@ -296,10 +310,10 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
               </div>
               <div className="text-center">
                 <span className="font-fredoka text-sm font-bold text-purple-primary">Proxy Server</span>
-                <span className="font-mono text-[9px] text-purple-light block">{PROXY_IP}</span>
+                <span className="font-mono text-[9px] text-purple-light block">{proxyIp}</span>
               </div>
               <div className="text-center">
-                <span className="font-fredoka text-sm font-bold text-purple-dark">Internet</span>
+                <span className="font-fredoka text-sm font-bold text-purple-dark">{opsContext ? 'Target Net' : 'Internet'}</span>
                 <span className="font-mono text-[9px] text-purple-light block">Websites</span>
               </div>
             </div>
@@ -355,7 +369,7 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
                 >
                   <Server size={32} strokeWidth={3} className="text-yellow-accent" />
                   <span className="font-nunito text-[9px] font-bold text-white mt-1">Proxy</span>
-                  <span className="font-mono text-[7px] text-purple-lighter">{PROXY_IP}</span>
+                  <span className="font-mono text-[7px] text-purple-lighter">{proxyIp}</span>
                 </motion.div>
 
                 {/* Cache indicator */}
@@ -367,7 +381,7 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
                   </div>
                   <div className="space-y-0.5">
                     {cache.map((entry) => {
-                      const site = WEBSITES.find((w) => w.id === entry.websiteId)!;
+                      const site = websites.find((w) => w.id === entry.websiteId)!;
                       return (
                         <motion.div
                           key={entry.websiteId}
@@ -392,7 +406,7 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
                 </div>
               </div>
 
-              {/* Internet Column */}
+              {/* Target network column */}
               <div className="flex flex-col items-center justify-center">
                 <motion.div
                   animate={activeFlow?.stage === 'proxy-to-internet' ? { scale: [1, 1.1, 1] } : {}}
@@ -410,7 +424,7 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
                     className="absolute top-10 right-[30%] z-10"
                   >
                     <div className="bg-yellow-accent border-2 border-black rounded-full px-2 py-1 font-mono text-[9px] font-bold">
-                      GET / (from {PROXY_IP})
+                      GET / (from {proxyIp})
                     </div>
                   </motion.div>
                 )}
@@ -459,10 +473,10 @@ export default function ProxyServer({ onScoreChange }: ProxyServerProps) {
           {/* Website Selection */}
           <div className="w-full bg-white rounded-xl border-[3px] border-black p-3">
             <span className="font-nunito text-[10px] font-bold text-purple-dark mb-2 block">
-              Click a website to request:
+              Click a target service to request:
             </span>
             <div className="grid grid-cols-6 gap-2">
-              {WEBSITES.map((site) => {
+              {websites.map((site) => {
                 const cached = isCached(site.id);
                 const blocked = contentFilterOn && blockedSites.includes(site.id);
                 return (
