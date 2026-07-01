@@ -1579,7 +1579,7 @@ export function resolveOpsAction({
     };
   }
 
-  const directMatches = getMatchingEffects(profile.effects, nextStep.accepts);
+
   const bridgeMatches = getMatchingEffects(availableEffects, nextStep.accepts)
     .filter((effect) => !profile.effects.includes(effect));
 
@@ -1603,45 +1603,12 @@ export function resolveOpsAction({
       counterEffect: counter,
       counterDescription: defenseControl.description,
       counterMiniGame: defenseControl.miniGame,
-      message: `${tool.name} only produced ${performance}/100 in the simuletool run, so ${target.displayName}'s ${defenseControl.name} held "${nextStep.title}". ${defenseControl.miniGame}`,
+      message: `${tool.name} did not complete the required GUI action, so ${target.displayName}'s ${defenseControl.name} held "${nextStep.title}". ${defenseControl.miniGame}`,
     };
   }
 
   const nextCompletedToolIds = [...new Set([...completedToolIds, opsToolId])];
   const stepComplete = nextCompletedToolIds.length >= stepToolChain.length;
-  const combinedEffects = [...new Set([...profile.effects, ...bridgeMatches])];
-  const counterHit = nextStep.defenderCounters.some((counter) => combinedEffects.includes(counter));
-  const specificDefensePressure = Math.min(18, getSpecificDefenseBonus(nextStep.defenderCounters, target) / 2);
-  const defensePressure = Math.min(54, Math.max(8, target.defensePower / 6 + objective.risk / 5 + specificDefensePressure));
-  const ownedBonus = isOwned ? 10 : 0;
-  const stabilityBonus = profile.stability * 4;
-  const chainFitRisk = directMatches.length === 0 ? 4 : 0;
-  const performanceBonus = Math.round((performance - requiredPerformance) / 4);
-  const blockChance = Math.max(4, Math.min(48, defensePressure - stabilityBonus - ownedBonus + (counterHit ? 8 : 0) + chainFitRisk - performanceBonus));
-  const blocked = Math.random() * 100 < blockChance;
-
-  if (blocked) {
-    const counter = nextStep.defenderCounters[Math.floor(Math.random() * nextStep.defenderCounters.length)];
-    const defenseControl = pickDefenseControl(counter, target);
-    return {
-      status: 'blocked',
-      objectiveId: objective.id,
-      stepId: nextStep.id,
-      toolId: tool.id,
-      opsToolId,
-      requiredOpsToolId,
-      completedToolIds,
-      points: 12,
-      simuleScore: performance,
-      created: [],
-      bridgeEffects: bridgeMatches,
-      counter: defenseControl.name,
-      counterEffect: counter,
-      counterDescription: defenseControl.description,
-      counterMiniGame: defenseControl.miniGame,
-      message: `${target.displayName}'s ${defenseControl.name} interrupted ${tool.name}. ${defenseControl.miniGame}`,
-    };
-  }
 
   const stepIndex = objective.steps.findIndex((step) => step.id === nextStep.id);
   const bridgeBonus = bridgeMatches.length > 0 ? 14 : 0;
@@ -1653,7 +1620,7 @@ export function resolveOpsAction({
   const bridgeText = bridgeMatches.length > 0
     ? ` using pinned ${bridgeMatches.map(getEffectLabel).join(' + ')} access`
     : '';
-  const performanceText = ` Simuletool performance: ${performance}/100.`;
+  const performanceText = ' Simuletool action and target proof verified.';
   const nextOpsToolId = stepToolChain.find((toolId) => !nextCompletedToolIds.includes(toolId));
   const nextTool = nextOpsToolId ? getAttackToolByOpsId(nextOpsToolId) : null;
 

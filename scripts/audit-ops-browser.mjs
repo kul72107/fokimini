@@ -299,7 +299,35 @@ async function main() {
       return [text, ...(textAliases[text] ?? [])];
     }
 
+    const retiredCounterPrompts = new Set([
+      'Shape traffic through the allowed service lane',
+      'Use a narrow app-layer test and respect blocked patterns',
+      'Pick the smallest scoped fix path before retrying',
+      'Correlate timestamps before taking the next action',
+      'Reduce suspicious behavior and isolate the lab process',
+      'Verify issuer, host, expiry, and fingerprint',
+      'Verify the clean snapshot before touching live data',
+      'Compare resolver answer with the expected record',
+      'Route only the needed request path through the proxy',
+      'Trace the exact path before changing route state',
+      'Filter the relevant protocol and inspect the flow',
+      'Stay on the active app surface and verify behavior',
+      'Validate the human clue against a second signal',
+      'Keep the sample contained and watch behavior',
+      'Stage only the safe lab payload and monitor response',
+      'Check process, file, and session context together',
+      'Validate scope, expiry, and revocation path',
+      'Confirm the credential clue without exposing secrets',
+      'Check integrity before relying on encoded data',
+      'Move only sanitized proof through the approved channel',
+    ]);
+
+    function isRetiredCounterPrompt(text) {
+      return retiredCounterPrompts.has(text) || /^Use the .+ clue only where the active step needs it$/.test(text);
+    }
+
     async function clickByText(text, exact = false) {
+      if (isRetiredCounterPrompt(text)) return;
       const clicked = await evaluate(`
         (() => {
           const candidates = ${JSON.stringify(clickCandidates(text))};
@@ -322,6 +350,7 @@ async function main() {
     }
 
     async function clickModalText(text, exact = false) {
+      if (isRetiredCounterPrompt(text)) return;
       const clicked = await evaluate(`
         (() => {
           const candidates = ${JSON.stringify(clickCandidates(text))};
@@ -389,22 +418,25 @@ async function main() {
       return evaluate(`
         (() => {
           const text = document.body.innerText;
-          const gateStart = text.indexOf('Step Gate');
-          const gateEnd = text.indexOf('Counter Stack');
+          const gateStart = text.indexOf('Completion Gate');
+          const gateEnd = text.indexOf('Target Proof');
           const gateText = gateStart >= 0
             ? text.slice(gateStart, gateEnd > gateStart ? gateEnd : gateStart + 700)
             : text;
-          const scoreMatch = gateText.match(/(\\d+)\\/100/);
-          const proofMatch = gateText.match(/Proof\\s+(\\d+)\\/100/);
+          const gateLower = gateText.toLowerCase();
+          const forbiddenGateText = ['operation score', 'counter stack', 'required ', 'tool score', 'counter score', 'operation run is strong enough', 'reach '].filter((item) => gateLower.includes(item));
+          const toolActionComplete = gateLower.includes('tool action') && gateLower.includes('complete');
+          const proofVerified = gateLower.includes('target proof') && gateLower.includes('verified');
           const commit = [...document.querySelectorAll('button')].find((button) => /Commit Segment|Complete VS Step/.test(button.innerText));
           return {
             openedTool: ${JSON.stringify(openedTool)},
-            score: scoreMatch ? Number(scoreMatch[1]) : null,
-            proofScore: proofMatch ? Number(proofMatch[1]) : null,
+            toolActionComplete,
+            proofVerified,
+            forbiddenGateText,
             commitText: commit ? commit.innerText.replace(/\\s+/g, ' ').trim() : null,
             commitDisabled: commit ? Boolean(commit.disabled) : null,
             fallbackVisible: text.includes('Ops Circuit'),
-            modalVisible: text.includes('Play the simuletool GUI'),
+            modalVisible: text.includes('Completion Gate') && text.includes('Target Proof'),
           };
         })()
       `);
@@ -455,8 +487,9 @@ async function main() {
         latest.fallbackVisible ||
         latest.commitText !== expectedSubmit ||
         latest.commitDisabled ||
-        (latest.score !== null && latest.score < 50) ||
-        (latest.proofScore !== null && latest.proofScore < 60)
+        !latest.toolActionComplete ||
+        !latest.proofVerified ||
+        latest.forbiddenGateText.length > 0
       ) {
         const snapshot = await pageSnapshot(evaluate);
         throw new Error(`${label} modal did not become submittable: ${JSON.stringify(latest)}\n${snapshot}`);
@@ -552,6 +585,7 @@ async function main() {
     }
 
     async function clickModalElementText(text, exact = false) {
+      if (isRetiredCounterPrompt(text)) return;
       const clicked = await evaluate(`
         (() => {
           const candidates = ${JSON.stringify(clickCandidates(text))};
@@ -1149,7 +1183,7 @@ async function main() {
     if (!openedTool) throw new Error('No PLAY GUI button was available in the active ops queue.');
     console.error(`[audit] opened ${openedTool}`);
 
-    await waitFor('DNS lookup modal', `Boolean(document.body?.innerText.includes('DNS Lookup Tool') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('DNS lookup modal', `Boolean(document.body?.innerText.includes('DNS Lookup Tool') && document.body?.innerText.includes('Completion Gate'))`);
     console.error('[audit] modal ready');
     await clickByText('Shape traffic through the allowed service lane', true);
     await clickByText('Correlate timestamps before taking the next action', true);
@@ -1164,20 +1198,19 @@ async function main() {
     const modalState = await evaluate(`
       (() => {
         const text = document.body.innerText;
-        const gateStart = text.indexOf('Step Gate');
-        const gateEnd = text.indexOf('Counter Stack');
+        const gateStart = text.indexOf('Completion Gate');
+        const gateEnd = text.indexOf('Target Proof');
         const gateText = gateStart >= 0
           ? text.slice(gateStart, gateEnd > gateStart ? gateEnd : gateStart + 700)
           : text;
-        const scoreMatch = gateText.match(/(\\d+)\\/100/);
         const commit = [...document.querySelectorAll('button')].find((button) => /Commit Segment|Complete VS Step/.test(button.innerText));
         return {
           openedTool: ${JSON.stringify(openedTool)},
-          score: scoreMatch ? Number(scoreMatch[1]) : null,
+
           commitText: commit ? commit.innerText.replace(/\\s+/g, ' ').trim() : null,
           commitDisabled: commit ? Boolean(commit.disabled) : null,
           fallbackVisible: text.includes('Ops Circuit'),
-          modalVisible: text.includes('Play the simuletool GUI'),
+          modalVisible: text.includes('Completion Gate') && text.includes('Target Proof'),
         };
       })()
     `);
@@ -1208,7 +1241,7 @@ async function main() {
     }
     console.error(`[audit] opened ${openedSecondTool}`);
 
-    await waitFor('Nmap port scanner modal', `Boolean(document.body?.innerText.includes('Nmap Port Scanner') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Nmap port scanner modal', `Boolean(document.body?.innerText.includes('Nmap Port Scanner') && document.body?.innerText.includes('Completion Gate'))`);
     console.error('[audit] Nmap modal ready');
     await clickByText('Shape traffic through the allowed service lane', true);
     await clickByText('Correlate timestamps before taking the next action', true);
@@ -1221,20 +1254,19 @@ async function main() {
     const nmapModalState = await evaluate(`
       (() => {
         const text = document.body.innerText;
-        const gateStart = text.indexOf('Step Gate');
-        const gateEnd = text.indexOf('Counter Stack');
+        const gateStart = text.indexOf('Completion Gate');
+        const gateEnd = text.indexOf('Target Proof');
         const gateText = gateStart >= 0
           ? text.slice(gateStart, gateEnd > gateStart ? gateEnd : gateStart + 700)
           : text;
-        const scoreMatch = gateText.match(/(\\d+)\\/100/);
         const commit = [...document.querySelectorAll('button')].find((button) => /Commit Segment|Complete VS Step/.test(button.innerText));
         return {
           openedTool: ${JSON.stringify(openedSecondTool)},
-          score: scoreMatch ? Number(scoreMatch[1]) : null,
+
           commitText: commit ? commit.innerText.replace(/\\s+/g, ' ').trim() : null,
           commitDisabled: commit ? Boolean(commit.disabled) : null,
           fallbackVisible: text.includes('Ops Circuit'),
-          modalVisible: text.includes('Play the simuletool GUI'),
+          modalVisible: text.includes('Completion Gate') && text.includes('Target Proof'),
         };
       })()
     `);
@@ -1258,7 +1290,7 @@ async function main() {
     console.error('[audit] first VS step completed and next ordered step visible');
 
     const openedSqlSafari = await openQueuedTool('SQL Safari');
-    await waitFor('SQL Safari modal', `Boolean(document.body?.innerText.includes('SQL Safari') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('SQL Safari modal', `Boolean(document.body?.innerText.includes('SQL Safari') && document.body?.innerText.includes('Completion Gate'))`);
     await clickByText('Use a narrow app-layer test and respect blocked patterns', true);
     await clickByText('Pick the smallest scoped fix path before retrying', true);
     await clickByText('The Sneaky Quote');
@@ -1288,7 +1320,7 @@ async function main() {
     console.error('[audit] second VS step completed and SQL Injector is next');
 
     const openedSqlInjector = await openQueuedTool('SQL Injector GUI');
-    await waitFor('SQL Injector modal', `Boolean(document.body?.innerText.includes('SQL Injector') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('SQL Injector modal', `Boolean(document.body?.innerText.includes('SQL Injector') && document.body?.innerText.includes('Completion Gate'))`);
     await clickByText('Use a narrow app-layer test and respect blocked patterns', true);
     await clickByText('Pick the smallest scoped fix path before retrying', true);
     await clickByText('Correlate timestamps before taking the next action', true);
@@ -1308,7 +1340,7 @@ async function main() {
     console.error('[audit] third VS step completed and Encryption Pipeline is next');
 
     const openedEncryption = await openQueuedTool('Encryption Pipeline');
-    await waitFor('Encryption Pipeline modal', `Boolean(document.body?.innerText.includes('Encryption Pipeline') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Encryption Pipeline modal', `Boolean(document.body?.innerText.includes('Encryption Pipeline') && document.body?.innerText.includes('Completion Gate'))`);
     await clickByText('Verify the clean snapshot before touching live data', true);
     await clickByText('Correlate timestamps before taking the next action', true);
     await clickByText('Start Pipeline');
@@ -1348,7 +1380,7 @@ async function main() {
     console.error('[audit] Admin Panel Access selected');
 
     const openedWhois = await openQueuedTool('Whois Lookup');
-    await waitFor('WHOIS Lookup modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('WHOIS Lookup modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Completion Gate'))`);
     await clickByText('Correlate timestamps before taking the next action', true);
     await fillFirstVisibleInput(auditTarget.primaryDomain, 'text');
     await clickModalText('LOOKUP', true);
@@ -1378,7 +1410,7 @@ async function main() {
     console.error('[audit] Admin Panel Access step 1 completed through WHOIS GUI');
 
     const openedHash = await openQueuedTool('Hash Cracker');
-    await waitFor('Hash Cracker modal', `Boolean(document.body?.innerText.includes('Hash Cracker') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Hash Cracker modal', `Boolean(document.body?.innerText.includes('Hash Cracker') && document.body?.innerText.includes('Completion Gate'))`);
     await clickByText('Reduce suspicious behavior and isolate the lab process', true);
     await clickByText('Correlate timestamps before taking the next action', true);
     await clickByText('Easy Start');
@@ -1408,7 +1440,7 @@ async function main() {
     console.error('[audit] Admin Panel Access step 2 completed through Hash Cracker GUI');
 
     const openedSsl = await openQueuedTool('SSL Handshake');
-    await waitFor('SSL Handshake modal', `Boolean(document.body?.innerText.includes('SSL Handshake') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('SSL Handshake modal', `Boolean(document.body?.innerText.includes('SSL Handshake') && document.body?.innerText.includes('Completion Gate'))`);
     await clickByText('Pick the smallest scoped fix path before retrying', true);
     await clickByText('Correlate timestamps before taking the next action', true);
     await clickByText('Client Hello');
@@ -1446,7 +1478,7 @@ async function main() {
     console.error('[audit] Session Hijack Sim selected');
 
     const openedPacketTracer = await openQueuedTool('Network Packet Tracer');
-    await waitFor('Packet Sniffer modal', `Boolean(document.body?.innerText.includes('Packet Sniffer') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Packet Sniffer modal', `Boolean(document.body?.innerText.includes('Packet Sniffer') && document.body?.innerText.includes('Completion Gate'))`);
     await clickByText('Verify issuer, host, expiry, and fingerprint', true);
     await clickByText('Correlate timestamps before taking the next action', true);
     await clickByText('START CAPTURE');
@@ -1469,7 +1501,7 @@ async function main() {
     console.error('[audit] Session Hijack first chain segment committed through Packet Sniffer GUI');
 
     const openedCertViewer = await openQueuedTool('Cert Viewer');
-    await waitFor('Cert Viewer modal', `Boolean(document.body?.innerText.includes('Cert Viewer') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Cert Viewer modal', `Boolean(document.body?.innerText.includes('Cert Viewer') && document.body?.innerText.includes('Completion Gate'))`);
     await clickByText('Verify issuer, host, expiry, and fingerprint', true);
     await clickByText('Correlate timestamps before taking the next action', true);
     await clickByText('old-site.example', true);
@@ -1497,7 +1529,7 @@ async function main() {
     console.error('[audit] Session Hijack step 1 completed through Cert Viewer GUI');
 
     const openedKeylogger = await openQueuedTool('Keylogger Sim');
-    await waitFor('Keylogger Sim modal', `Boolean(document.body?.innerText.includes('Keylogger Sim') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Keylogger Sim modal', `Boolean(document.body?.innerText.includes('Keylogger Sim') && document.body?.innerText.includes('Completion Gate'))`);
     await clickByText('Reduce suspicious behavior and isolate the lab process', true);
     await clickByText('Pick the smallest scoped fix path before retrying', true);
     await clickVirtualKeys(['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P']);
@@ -1523,7 +1555,7 @@ async function main() {
     console.error('[audit] Session Hijack step 2 completed through Keylogger Sim GUI');
 
     const openedProxy = await openQueuedTool('Proxy Server');
-    await waitFor('Proxy Server modal', `Boolean(document.body?.innerText.includes('Proxy Server Simulator') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Proxy Server modal', `Boolean(document.body?.innerText.includes('Proxy Server Simulator') && document.body?.innerText.includes('Completion Gate'))`);
     await clickByText('Correlate timestamps before taking the next action', true);
     await clickByText('Pick the smallest scoped fix path before retrying', true);
     await clickByText('Start Simulation');
@@ -1582,7 +1614,7 @@ async function main() {
     console.error('[audit] Web Malware Implant selected');
 
     const openedWebNmap = await openQueuedTool('Nmap Scanner');
-    await waitFor('Web Nmap modal', `Boolean(document.body?.innerText.includes('Nmap Port Scanner') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Web Nmap modal', `Boolean(document.body?.innerText.includes('Nmap Port Scanner') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Use a narrow app-layer test and respect blocked patterns', true);
     await clickModalText('Correlate timestamps before taking the next action', true);
     await clickModalText('Web Server');
@@ -1613,7 +1645,7 @@ async function main() {
     console.error('[audit] Web Malware step 1 completed through Nmap GUI');
 
     const openedXssTester = await openQueuedTool('XSS Tester');
-    await waitFor('XSS Tester modal', `Boolean(document.body?.innerText.includes('XSS Tester') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('XSS Tester modal', `Boolean(document.body?.innerText.includes('XSS Tester') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Use a narrow app-layer test and respect blocked patterns', true);
     await clickModalText('Pick the smallest scoped fix path before retrying', true);
     await clickModalText('Script Alert');
@@ -1647,7 +1679,7 @@ async function main() {
     console.error('[audit] Web Malware step 2 completed through XSS Tester GUI');
 
     const openedTrojan = await openQueuedTool('Trojan Builder');
-    await waitFor('Trojan Builder modal', `Boolean(document.body?.innerText.includes('Trojan Builder') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Trojan Builder modal', `Boolean(document.body?.innerText.includes('Trojan Builder') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
     await clickModalText('Correlate timestamps before taking the next action', true);
     await clickModalText('Office Macro');
@@ -1697,7 +1729,7 @@ async function main() {
     console.error('[audit] Keylogger Telemetry selected');
 
     const openedDeliveryPhish = await openQueuedTool('Phishing Sim');
-    await waitFor('Phishing Simulator modal', `Boolean(document.body?.innerText.includes('Phishing Simulator') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Phishing Simulator modal', `Boolean(document.body?.innerText.includes('Phishing Simulator') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
     await clickModalText('Correlate timestamps before taking the next action', true);
     await fillModalField('security@audit-target.ops', 'security@login-audit-target-ops.ops');
@@ -1737,7 +1769,7 @@ async function main() {
     console.error('[audit] Keylogger Telemetry step 1 completed through Phishing Sim GUI');
 
     const openedEndpointTrojan = await openQueuedTool('Trojan Builder');
-    await waitFor('Endpoint Trojan modal', `Boolean(document.body?.innerText.includes('Trojan Builder') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Endpoint Trojan modal', `Boolean(document.body?.innerText.includes('Trojan Builder') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
     await clickModalText('Pick the smallest scoped fix path before retrying', true);
     await clickModalText('Office Macro');
@@ -1778,7 +1810,7 @@ async function main() {
     console.error('[audit] Keylogger Telemetry step 2 completed through Trojan Builder GUI');
 
     const openedTelemetryKeylogger = await openQueuedTool('Keylogger Sim');
-    await waitFor('Telemetry Keylogger modal', `Boolean(document.body?.innerText.includes('Keylogger Sim') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Telemetry Keylogger modal', `Boolean(document.body?.innerText.includes('Keylogger Sim') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
     await clickModalText('Correlate timestamps before taking the next action', true);
     await clickVirtualKeys(['A', 'U', 'D', 'I', 'T', 'S', 'E', 'C', 'U', 'R']);
@@ -1813,7 +1845,7 @@ async function main() {
     console.error('[audit] Cookie Capture selected');
 
     const openedLocalTrojan = await openQueuedTool('Trojan Builder');
-    await waitFor('Local Trojan modal', `Boolean(document.body?.innerText.includes('Trojan Builder') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Local Trojan modal', `Boolean(document.body?.innerText.includes('Trojan Builder') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
     await clickModalText('Office Macro');
     await clickTrojanPaletteTab(1);
@@ -1853,7 +1885,7 @@ async function main() {
     console.error('[audit] Cookie Capture step 1 completed through Trojan Builder GUI');
 
     const openedLogAnalyzer = await openQueuedTool('Log Analyzer');
-    await waitFor('Log Analyzer modal', `Boolean(document.body?.innerText.includes('Log Analyzer') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Log Analyzer modal', `Boolean(document.body?.innerText.includes('Log Analyzer') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Reduce suspicious behavior and isolate the lab process', true);
     await clickModalText('Pick the smallest scoped fix path before retrying', true);
     await clickModalText('The Brute');
@@ -1891,7 +1923,7 @@ async function main() {
     console.error('[audit] Cookie Capture step 2 completed through Log Analyzer GUI');
 
     const openedCookieEncryption = await openQueuedTool('Encryption Pipeline');
-    await waitFor('Cookie Encryption Pipeline modal', `Boolean(document.body?.innerText.includes('Encryption Pipeline') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Cookie Encryption Pipeline modal', `Boolean(document.body?.innerText.includes('Encryption Pipeline') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Correlate timestamps before taking the next action', true);
     await clickModalText('Pick the smallest scoped fix path before retrying', true);
     await clickModalText('Start Pipeline');
@@ -1931,7 +1963,7 @@ async function main() {
     console.error('[audit] API Key Theft selected');
 
     const openedApiWhois = await openQueuedTool('Whois Lookup');
-    await waitFor('API WHOIS Lookup modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('API WHOIS Lookup modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Correlate timestamps before taking the next action', true);
     await fillFirstVisibleInput(auditTarget.primaryDomain, 'text');
     await clickModalText('LOOKUP', true);
@@ -1960,7 +1992,7 @@ async function main() {
     console.error('[audit] API Key Theft WHOIS segment committed');
 
     const openedApiDns = await openQueuedTool('DNS Lookup GUI');
-    await waitFor('API DNS lookup modal', `Boolean(document.body?.innerText.includes('DNS Lookup Tool') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('API DNS lookup modal', `Boolean(document.body?.innerText.includes('DNS Lookup Tool') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Correlate timestamps before taking the next action', true);
     await resolveAuditDns('API DNS lookup');
     for (let i = 1; i <= 4; i++) {
@@ -1995,7 +2027,7 @@ async function main() {
     console.error('[audit] API Key Theft step 1 completed through WHOIS + DNS GUI chain');
 
     const openedXorTool = await openQueuedTool('XOR Tool');
-    await waitFor('XOR Tool modal', `Boolean(document.body?.innerText.includes('XOR Tool') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('XOR Tool modal', `Boolean(document.body?.innerText.includes('XOR Tool') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Pick the smallest scoped fix path before retrying', true);
     for (let i = 0; i < 5; i++) {
       await clickModalText('Run XOR Operation');
@@ -2017,7 +2049,7 @@ async function main() {
     console.error('[audit] API Key Theft XOR segment committed');
 
     const openedApiHash = await openQueuedTool('Hash Cracker');
-    await waitFor('API Hash Cracker modal', `Boolean(document.body?.innerText.includes('Hash Cracker') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('API Hash Cracker modal', `Boolean(document.body?.innerText.includes('Hash Cracker') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Pick the smallest scoped fix path before retrying', true);
     await clickModalText('Easy Start');
     await sleep(500);
@@ -2046,7 +2078,7 @@ async function main() {
     console.error('[audit] API Key Theft step 2 completed through XOR + Hash GUI chain');
 
     const openedApiProxy = await openQueuedTool('Proxy Server');
-    await waitFor('API Proxy Server modal', `Boolean(document.body?.innerText.includes('Proxy Server Simulator') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('API Proxy Server modal', `Boolean(document.body?.innerText.includes('Proxy Server Simulator') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Correlate timestamps before taking the next action', true);
     await clickModalText('Pick the smallest scoped fix path before retrying', true);
     await clickModalText('Start Simulation');
@@ -2105,7 +2137,7 @@ async function main() {
     console.error('[audit] Internal Service Access selected');
 
     const openedNetworkNavigator = await openQueuedTool('Network Navigator');
-    await waitFor('Network Navigator modal', `Boolean(document.body?.innerText.includes('Network Navigator') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Network Navigator modal', `Boolean(document.body?.innerText.includes('Network Navigator') && document.body?.innerText.includes('Completion Gate'))`);
     await runNetworkNavigator('Internal Service');
     const networkNavigatorState = await readModalState(openedNetworkNavigator);
     await assertSubmittable(networkNavigatorState, 'Network Navigator');
@@ -2123,7 +2155,7 @@ async function main() {
     console.error('[audit] Internal Service step 1 completed through Network Navigator GUI');
 
     const openedInternalNmap = await openQueuedTool('Nmap Scanner');
-    await waitFor('Internal Nmap modal', `Boolean(document.body?.innerText.includes('Nmap Port Scanner') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Internal Nmap modal', `Boolean(document.body?.innerText.includes('Nmap Port Scanner') && document.body?.innerText.includes('Completion Gate'))`);
     await runWebNmap('Internal Service');
     const internalNmapState = await readModalState(openedInternalNmap);
     await assertSubmittable(internalNmapState, 'Internal Nmap');
@@ -2141,7 +2173,7 @@ async function main() {
     console.error('[audit] Internal Service step 2 completed through Nmap GUI');
 
     const openedVpnTunnel = await openQueuedTool('VPN Tunnel');
-    await waitFor('VPN Tunnel modal', `Boolean(document.body?.innerText.includes('VPN Tunnel') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('VPN Tunnel modal', `Boolean(document.body?.innerText.includes('VPN Tunnel') && document.body?.innerText.includes('Completion Gate'))`);
     await runVpnTunnel('Internal Service');
     const vpnTunnelState = await readModalState(openedVpnTunnel);
     await assertSubmittable(vpnTunnelState, 'VPN Tunnel');
@@ -2168,7 +2200,7 @@ async function main() {
     console.error('[audit] Service Disruption selected');
 
     const openedChokeTracer = await openQueuedTool('Network Packet Tracer');
-    await waitFor('Traffic choke Packet Sniffer modal', `Boolean(document.body?.innerText.includes('Packet Sniffer') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Traffic choke Packet Sniffer modal', `Boolean(document.body?.innerText.includes('Packet Sniffer') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Shape traffic through the allowed service lane', true);
     await clickModalText('Correlate timestamps before taking the next action', true);
     await clickModalText('START CAPTURE');
@@ -2194,7 +2226,7 @@ async function main() {
     console.error('[audit] Service Disruption step 1 completed through Packet Sniffer GUI');
 
     const openedDisruptionProxy = await openQueuedTool('Proxy Server');
-    await waitFor('Disruption Proxy modal', `Boolean(document.body?.innerText.includes('Proxy Server Simulator') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Disruption Proxy modal', `Boolean(document.body?.innerText.includes('Proxy Server Simulator') && document.body?.innerText.includes('Completion Gate'))`);
     await runProxySimulation('Service Disruption', ['Shape traffic through the allowed service lane', 'Verify the clean snapshot before touching live data']);
     const disruptionProxyState = await readModalState(openedDisruptionProxy);
     await assertSubmittable(disruptionProxyState, 'Disruption Proxy Server');
@@ -2212,7 +2244,7 @@ async function main() {
     console.error('[audit] Service Disruption step 2 completed through Proxy GUI');
 
     const openedLoadBalancer = await openQueuedTool('Load Balancer');
-    await waitFor('Load Balancer modal', `Boolean(document.body?.innerText.includes('Load Balancer') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Load Balancer modal', `Boolean(document.body?.innerText.includes('Load Balancer') && document.body?.innerText.includes('Completion Gate'))`);
     await runLoadBalancer('Service Disruption');
     const loadBalancerState = await readModalState(openedLoadBalancer);
     await assertSubmittable(loadBalancerState, 'Load Balancer');
@@ -2239,7 +2271,7 @@ async function main() {
     console.error('[audit] Local Pharming Redirect selected');
 
     const openedPharmingTrojan = await openQueuedTool('Trojan Builder');
-    await waitFor('Pharming Trojan modal', `Boolean(document.body?.innerText.includes('Trojan Builder') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Pharming Trojan modal', `Boolean(document.body?.innerText.includes('Trojan Builder') && document.body?.innerText.includes('Completion Gate'))`);
     await runTrojanBuilder('Local Pharming', ['Reduce suspicious behavior and isolate the lab process', 'Pick the smallest scoped fix path before retrying']);
     const pharmingTrojanState = await readModalState(openedPharmingTrojan);
     await assertSubmittable(pharmingTrojanState, 'Pharming Trojan');
@@ -2257,7 +2289,7 @@ async function main() {
     console.error('[audit] Local Pharming step 1 completed through Trojan Builder GUI');
 
     const openedDnsResolver = await openQueuedTool('DNS Resolver');
-    await waitFor('DNS Resolver modal', `Boolean(document.body?.innerText.includes('DNS Resolver') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('DNS Resolver modal', `Boolean(document.body?.innerText.includes('DNS Resolver') && document.body?.innerText.includes('Completion Gate'))`);
     await runDnsResolver('Local Pharming');
     const dnsResolverState = await readModalState(openedDnsResolver);
     await assertSubmittable(dnsResolverState, 'DNS Resolver');
@@ -2275,7 +2307,7 @@ async function main() {
     console.error('[audit] Local Pharming step 2 completed through DNS Resolver GUI');
 
     const openedPharmingCert = await openQueuedTool('Cert Viewer');
-    await waitFor('Pharming Cert Viewer modal', `Boolean(document.body?.innerText.includes('Cert Viewer') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Pharming Cert Viewer modal', `Boolean(document.body?.innerText.includes('Cert Viewer') && document.body?.innerText.includes('Completion Gate'))`);
     await runCertViewer('Local Pharming', ['Verify issuer, host, expiry, and fingerprint', 'Pick the smallest scoped fix path before retrying']);
     const pharmingCertState = await readModalState(openedPharmingCert);
     await assertSubmittable(pharmingCertState, 'Pharming Cert Viewer');
@@ -2302,7 +2334,7 @@ async function main() {
     console.error('[audit] Backup Dump selected');
 
     const openedBackupWhois = await openQueuedTool('Whois Lookup');
-    await waitFor('Backup WHOIS modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Backup WHOIS modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Completion Gate'))`);
     await runWhoisLookup('Backup Dump');
     const backupWhoisState = await readModalState(openedBackupWhois);
     await assertSubmittable(backupWhoisState, 'Backup WHOIS Lookup', 'Commit Segment');
@@ -2319,7 +2351,7 @@ async function main() {
     console.error('[audit] Backup Dump WHOIS segment committed');
 
     const openedBackupDns = await openQueuedTool('DNS Lookup GUI');
-    await waitFor('Backup DNS modal', `Boolean(document.body?.innerText.includes('DNS Lookup Tool') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Backup DNS modal', `Boolean(document.body?.innerText.includes('DNS Lookup Tool') && document.body?.innerText.includes('Completion Gate'))`);
     await runDnsLookupGui('Backup Dump');
     const backupDnsState = await readModalState(openedBackupDns);
     await assertSubmittable(backupDnsState, 'Backup DNS Lookup');
@@ -2337,7 +2369,7 @@ async function main() {
     console.error('[audit] Backup Dump step 1 completed through WHOIS + DNS GUI chain');
 
     const openedBackupAccess = await openQueuedTool('Access Ace');
-    await waitFor('Backup Access Ace modal', `Boolean(document.body?.innerText.includes('Access Ace') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Backup Access Ace modal', `Boolean(document.body?.innerText.includes('Access Ace') && document.body?.innerText.includes('Completion Gate'))`);
     await runAccessAce('Backup Dump');
     const backupAccessState = await readModalState(openedBackupAccess);
     await assertSubmittable(backupAccessState, 'Backup Access Ace');
@@ -2355,7 +2387,7 @@ async function main() {
     console.error('[audit] Backup Dump step 2 completed through Access Ace GUI');
 
     const openedBackupEncryption = await openQueuedTool('Encryption Pipeline');
-    await waitFor('Backup Encryption modal', `Boolean(document.body?.innerText.includes('Encryption Pipeline') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Backup Encryption modal', `Boolean(document.body?.innerText.includes('Encryption Pipeline') && document.body?.innerText.includes('Completion Gate'))`);
     await runEncryptionPipeline('Backup Dump', ['Verify the clean snapshot before touching live data', 'Correlate timestamps before taking the next action']);
     const backupEncryptionState = await readModalState(openedBackupEncryption);
     await assertSubmittable(backupEncryptionState, 'Backup Encryption Pipeline');
@@ -2382,7 +2414,7 @@ async function main() {
     console.error('[audit] Popup Consent Trap selected');
 
     const openedPopupWhois = await openQueuedTool('Whois Lookup');
-    await waitFor('Popup WHOIS modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Popup WHOIS modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Use the OSINT clue only where the active step needs it', true);
     await runWhoisLookup('Popup Consent');
     const popupWhoisState = await readModalState(openedPopupWhois);
@@ -2418,7 +2450,7 @@ async function main() {
     console.error('[audit] Popup Consent step 1 completed through WHOIS + Phishing Detective GUI chain');
 
     const openedPopupPhish = await openQueuedTool('Phishing Sim');
-    await waitFor('Popup Phishing Simulator modal', `Boolean(document.body?.innerText.includes('Phishing Simulator') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Popup Phishing Simulator modal', `Boolean(document.body?.innerText.includes('Phishing Simulator') && document.body?.innerText.includes('Completion Gate'))`);
     await runPhishingSimulator('Popup Consent');
     const popupPhishState = await readModalState(openedPopupPhish);
     await assertSubmittable(popupPhishState, 'Popup Phishing Sim');
@@ -2436,7 +2468,7 @@ async function main() {
     console.error('[audit] Popup Consent step 2 completed through Phishing Simulator GUI');
 
     const openedPopupAccess = await openQueuedTool('Access Ace');
-    await waitFor('Popup Access Ace modal', `Boolean(document.body?.innerText.includes('Access Ace') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Popup Access Ace modal', `Boolean(document.body?.innerText.includes('Access Ace') && document.body?.innerText.includes('Completion Gate'))`);
     await runAccessAce('Popup Consent', [
       'Correlate timestamps before taking the next action',
       'Pick the smallest scoped fix path before retrying',
@@ -2467,7 +2499,7 @@ async function main() {
     console.error('[audit] Third-Party Widget Pivot selected');
 
     const openedWidgetWhois = await openQueuedTool('Whois Lookup');
-    await waitFor('Widget WHOIS modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Widget WHOIS modal', `Boolean(document.body?.innerText.includes('WHOIS Lookup') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Use the OSINT clue only where the active step needs it', true);
     await runWhoisLookup('Widget Pivot', 60);
     const widgetWhoisState = await readModalState(openedWidgetWhois);
@@ -2485,7 +2517,7 @@ async function main() {
     console.error('[audit] Widget Pivot WHOIS segment committed');
 
     const openedWidgetDns = await openQueuedTool('DNS Lookup GUI');
-    await waitFor('Widget DNS modal', `Boolean(document.body?.innerText.includes('DNS Lookup Tool') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Widget DNS modal', `Boolean(document.body?.innerText.includes('DNS Lookup Tool') && document.body?.innerText.includes('Completion Gate'))`);
     await clickModalText('Use the OSINT clue only where the active step needs it', true);
     await runDnsLookupGui('Widget Pivot');
     const widgetDnsState = await readModalState(openedWidgetDns);
@@ -2504,7 +2536,7 @@ async function main() {
     console.error('[audit] Widget Pivot step 1 completed through WHOIS + DNS GUI chain');
 
     const openedWidgetCert = await openQueuedTool('Cert Viewer');
-    await waitFor('Widget Cert Viewer modal', `Boolean(document.body?.innerText.includes('Cert Viewer') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Widget Cert Viewer modal', `Boolean(document.body?.innerText.includes('Cert Viewer') && document.body?.innerText.includes('Completion Gate'))`);
     await runCertViewer('Widget Pivot', [
       'Verify issuer, host, expiry, and fingerprint',
       'Pick the smallest scoped fix path before retrying',
@@ -2526,7 +2558,7 @@ async function main() {
     console.error('[audit] Widget Pivot step 2 completed through Cert Viewer GUI');
 
     const openedXssXpert = await openQueuedTool('XSS Xpert');
-    await waitFor('XSS Xpert modal', `Boolean(document.body?.innerText.includes('XSS Xpert') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('XSS Xpert modal', `Boolean(document.body?.innerText.includes('XSS Xpert') && document.body?.innerText.includes('Completion Gate'))`);
     await runXssXpert('Widget Pivot');
     const xssXpertState = await readModalState(openedXssXpert);
     await assertSubmittable(xssXpertState, 'XSS Xpert');
@@ -2544,7 +2576,7 @@ async function main() {
     console.error('[audit] Widget Pivot step 3 completed through XSS Xpert GUI');
 
     const openedWidgetEncryption = await openQueuedTool('Encryption Pipeline');
-    await waitFor('Widget Encryption modal', `Boolean(document.body?.innerText.includes('Encryption Pipeline') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Widget Encryption modal', `Boolean(document.body?.innerText.includes('Encryption Pipeline') && document.body?.innerText.includes('Completion Gate'))`);
     await runEncryptionPipeline('Widget Pivot', [
       'Verify the clean snapshot before touching live data',
       'Correlate timestamps before taking the next action',
@@ -2575,7 +2607,7 @@ async function main() {
     console.error('[audit] Full Attack Block selected');
 
     const openedDefenseLog = await openQueuedTool('Log Analyzer');
-    await waitFor('Defense Log Analyzer modal', `Boolean(document.body?.innerText.includes('Log Analyzer') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Defense Log Analyzer modal', `Boolean(document.body?.innerText.includes('Log Analyzer') && document.body?.innerText.includes('Completion Gate'))`);
     await runLogAnalyzer('Full Attack Block', ['Use the Stealth clue only where the active step needs it']);
     const defenseLogState = await readModalState(openedDefenseLog);
     await assertSubmittable(defenseLogState, 'Defense Log Analyzer');
@@ -2593,7 +2625,7 @@ async function main() {
     console.error('[audit] Full Attack Block step 1 completed through Log Analyzer GUI');
 
     const openedFirewallDefender = await openQueuedTool('Firewall Defender');
-    await waitFor('Firewall Defender modal', `Boolean(document.body?.innerText.includes('Firewall Defender') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Firewall Defender modal', `Boolean(document.body?.innerText.includes('Firewall Defender') && document.body?.innerText.includes('Completion Gate'))`);
     await runFirewallDefender('Full Attack Block');
     const firewallDefenderState = await readModalState(openedFirewallDefender);
     await assertSubmittable(firewallDefenderState, 'Firewall Defender');
@@ -2611,7 +2643,7 @@ async function main() {
     console.error('[audit] Full Attack Block step 2 completed through Firewall Defender GUI');
 
     const openedCertChampion = await openQueuedTool('Cert Champion');
-    await waitFor('Cert Champion modal', `Boolean(document.body?.innerText.includes('Cert Champion') && document.body?.innerText.includes('Counter Stack'))`);
+    await waitFor('Cert Champion modal', `Boolean(document.body?.innerText.includes('Cert Champion') && document.body?.innerText.includes('Completion Gate'))`);
     await runCertChampion('Full Attack Block');
     const certChampionState = await readModalState(openedCertChampion);
     await assertSubmittable(certChampionState, 'Cert Champion');
@@ -2781,9 +2813,9 @@ async function pageSnapshot(evaluate) {
   const text = await evaluate(`
     (() => {
       const fullText = document.body?.innerText?.replace(/\\s+/g, ' ').trim() || '';
-      const primaryModalIndex = fullText.indexOf('Play the simuletool GUI');
+      const primaryModalIndex = fullText.indexOf('Completion Gate');
       const modalIndex = primaryModalIndex >= 0 ? primaryModalIndex : ([
-        'Play the simuletool GUI',
+        'Completion Gate',
         'Nmap Port Scanner',
         'DNS Lookup Tool',
         'SQL Safari',

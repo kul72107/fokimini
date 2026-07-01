@@ -4,13 +4,11 @@ import {
   Activity,
   CheckCircle,
   Fingerprint,
-  Gauge,
   Puzzle,
   Shield,
   Sparkles,
   Target,
   X,
-  Zap,
 } from 'lucide-react';
 import {
   SIMULE_TOOLS,
@@ -86,107 +84,8 @@ function clampScore(score: number) {
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-function getRequiredScore(objective: OpsObjective) {
-  return objective.difficulty === 1 ? 40 : objective.difficulty === 2 ? 50 : 60;
-}
-
 function getSimuleTool(tool: AttackTool): SimuleTool | undefined {
   return SIMULE_TOOLS.find((candidate) => candidate.battleId === tool.id || candidate.name === tool.name);
-}
-
-function getCounterOptions(effect: OpsEffect) {
-  const map: Partial<Record<OpsEffect, { right: string; traps: string[] }>> = {
-    firewall: {
-      right: 'Shape traffic through the allowed service lane',
-      traps: ['Spray every port', 'Disable the whole edge policy'],
-    },
-    waf: {
-      right: 'Use a narrow app-layer test and respect blocked patterns',
-      traps: ['Force the same blocked payload', 'Ignore normal visitor behavior'],
-    },
-    patch: {
-      right: 'Pick the smallest scoped fix path before retrying',
-      traps: ['Change unrelated services', 'Skip version and config checks'],
-    },
-    log: {
-      right: 'Correlate timestamps before taking the next action',
-      traps: ['Trust one isolated event', 'Delete noisy evidence'],
-    },
-    edr: {
-      right: 'Reduce suspicious behavior and isolate the lab process',
-      traps: ['Keep persistence running', 'Blend every process together'],
-    },
-    cert: {
-      right: 'Verify issuer, host, expiry, and fingerprint',
-      traps: ['Accept the first certificate', 'Check only the lock icon'],
-    },
-    backup: {
-      right: 'Verify the clean snapshot before touching live data',
-      traps: ['Overwrite the last clean copy', 'Restore without integrity checks'],
-    },
-    dns: {
-      right: 'Compare resolver answer with the expected record',
-      traps: ['Trust the local answer blindly', 'Change every DNS record'],
-    },
-    proxy: {
-      right: 'Route only the needed request path through the proxy',
-      traps: ['Proxy all traffic at once', 'Hide the source of every request'],
-    },
-    network: {
-      right: 'Trace the exact path before changing route state',
-      traps: ['Jump to an unrelated subnet', 'Assume every hop is hostile'],
-    },
-    traffic: {
-      right: 'Filter the relevant protocol and inspect the flow',
-      traps: ['Capture noise without a filter', 'Treat volume as proof'],
-    },
-    web: {
-      right: 'Stay on the active app surface and verify behavior',
-      traps: ['Click unrelated pages', 'Assume the UI proves backend access'],
-    },
-    social: {
-      right: 'Validate the human clue against a second signal',
-      traps: ['Trust urgency language', 'Treat a profile hint as proof'],
-    },
-    malware: {
-      right: 'Keep the sample contained and watch behavior',
-      traps: ['Run without isolation', 'Classify by filename only'],
-    },
-    payload: {
-      right: 'Stage only the safe lab payload and monitor response',
-      traps: ['Use an unbounded payload', 'Skip containment'],
-    },
-    endpoint: {
-      right: 'Check process, file, and session context together',
-      traps: ['Trust one process name', 'Ignore local policy state'],
-    },
-    session: {
-      right: 'Validate scope, expiry, and revocation path',
-      traps: ['Reuse every token', 'Ignore session owner'],
-    },
-    credential: {
-      right: 'Confirm the credential clue without exposing secrets',
-      traps: ['Paste secrets everywhere', 'Ignore reset state'],
-    },
-    crypto: {
-      right: 'Check integrity before relying on encoded data',
-      traps: ['Treat encoding as encryption', 'Ignore key/source mismatch'],
-    },
-    exfil: {
-      right: 'Move only sanitized proof through the approved channel',
-      traps: ['Dump everything', 'Skip proof minimization'],
-    },
-  };
-
-  return map[effect] ?? {
-    right: `Use the ${getEffectLabel(effect)} clue only where the active step needs it`,
-    traps: ['Force it into every route', 'Ignore the target context'],
-  };
-}
-
-function rotateOptions(options: string[], seed: string) {
-  const offset = seed.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0) % options.length;
-  return [...options.slice(offset), ...options.slice(0, offset)];
 }
 
 export function SimuleGame({
@@ -369,84 +268,30 @@ function EffectBadge({ effect }: { effect: OpsEffect }) {
   );
 }
 
-function CounterStackChallenge({
-  counters,
+function buildToolTip({
+  tool,
+  step,
   opsContext,
-  onScoreChange,
+  directEffects,
+  bridgedEffects,
 }: {
-  counters: OpsEffect[];
-  opsContext?: OpsToolContext;
-  onScoreChange: ScoreHandler;
+  tool: AttackTool;
+  step: OpsStep;
+  opsContext: OpsToolContext;
+  directEffects: OpsEffect[];
+  bridgedEffects: OpsEffect[];
 }) {
-  const visibleCounters = counters.slice(0, 3);
-  const [answers, setAnswers] = useState<Record<OpsEffect, string>>({} as Record<OpsEffect, string>);
-  const optionSets = useMemo(() => {
-    return visibleCounters.map((effect) => {
-      const config = getCounterOptions(effect);
-      return {
-        effect,
-        right: config.right,
-        options: rotateOptions([config.right, ...config.traps], effect),
-      };
-    });
-  }, [visibleCounters.join('|')]);
+  const effects = [...new Set([...directEffects, ...bridgedEffects, ...step.accepts.slice(0, 2)])]
+    .slice(0, 3)
+    .map(getEffectLabel)
+    .join(' + ');
 
-  if (visibleCounters.length === 0) {
-    return (
-      <div className="rounded-2xl border-[3px] border-black bg-green-success/20 p-4">
-        <div className="flex items-center gap-2">
-          <CheckCircle size={20} strokeWidth={3} className="text-green-success" />
-          <h3 className="font-fredoka text-lg font-black text-purple-darker">No active counter stack</h3>
-        </div>
-      </div>
-    );
-  }
-
-  const choose = (effect: OpsEffect, answer: string) => {
-    const next = { ...answers, [effect]: answer };
-    setAnswers(next);
-    const correct = optionSets.filter((set) => next[set.effect] === set.right).length;
-    onScoreChange(Math.round((correct / optionSets.length) * 100));
+  return {
+    title: `Finish ${step.title}`,
+    action: `Use ${tool.name} only against ${opsContext.target.platformName}. The relevant target is ${opsContext.target.primaryDomain}.`,
+    target: `Stay on the matching assets: ${opsContext.target.apiName}, ${opsContext.target.databaseName}, ${opsContext.target.sessionCookieName}, or the service shown inside the GUI.`,
+    done: `Complete the GUI action that proves ${effects || step.result}, then select only the matching target proof artifacts.`,
   };
-
-  return (
-    <div className="rounded-2xl border-[3px] border-black bg-white p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <Shield size={20} strokeWidth={3} className="text-green-success" />
-        <h3 className="font-fredoka text-xl font-black text-purple-darker">Counter Stack</h3>
-      </div>
-      <p className="mb-3 font-nunito text-xs font-bold text-purple-dark">
-        Target defenses appear automatically for {opsContext?.target.platformName ?? 'this step'}. Pick the clean maneuver for each one.
-      </p>
-      <div className="space-y-3">
-        {optionSets.map((set) => (
-          <div key={set.effect} className="rounded-xl border-2 border-black bg-purple-pale p-3">
-            <p className="mb-2 font-nunito text-[10px] font-black uppercase text-purple-primary">
-              {getEffectLabel(set.effect)} pressure
-            </p>
-            <div className="space-y-2">
-              {set.options.map((option) => {
-                const active = answers[set.effect] === option;
-                const correct = active && option === set.right;
-                const wrong = active && option !== set.right;
-                return (
-                  <button
-                    key={option}
-                    onClick={() => choose(set.effect, option)}
-                    className={`w-full rounded-xl border-2 border-black px-3 py-2 text-left font-nunito text-[11px] font-black transition-transform hover:scale-[1.01] ${
-                      correct ? 'bg-green-success text-black' : wrong ? 'bg-red-alert text-white' : 'bg-white text-purple-darker'
-                    }`}
-                  >
-                    {option}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 function ArtifactProofChallenge({
@@ -467,8 +312,8 @@ function ArtifactProofChallenge({
 
       const correctPicked = opsContext.contract.options.filter((item) => item.correct && next.has(item.id)).length;
       const wrongPicked = opsContext.contract.options.filter((item) => !item.correct && next.has(item.id)).length;
-      const score = Math.max(0, Math.round((correctPicked / Math.max(1, requiredCount)) * 100) - wrongPicked * 35);
-      onScoreChange(score);
+      const complete = correctPicked === requiredCount && wrongPicked === 0;
+      onScoreChange(complete ? 100 : 0);
       return next;
     });
   };
@@ -506,7 +351,7 @@ function ArtifactProofChallenge({
         })}
       </div>
       <p className="mt-3 rounded-xl border-2 border-black bg-green-success/20 px-3 py-2 font-nunito text-[10px] font-black uppercase text-purple-darker">
-        Expected proof: {opsContext.contract.expectedProof}
+        Select every artifact that belongs to this target step. Decoys stay unselected.
       </p>
     </div>
   );
@@ -524,11 +369,10 @@ export default function OpsSimuleToolModal({
   onCancel,
   onComplete,
 }: Props) {
-  const [currentScore, setCurrentScore] = useState(0);
-  const [bestScore, setBestScore] = useState(0);
-  const [counterScore, setCounterScore] = useState(step.defenderCounters.length === 0 ? 100 : 0);
-  const [proofScore, setProofScore] = useState(0);
-  const [scoreEvents, setScoreEvents] = useState(0);
+  const [currentSignal, setCurrentSignal] = useState(0);
+  const [bestSignal, setBestSignal] = useState(0);
+  const [proofComplete, setProofComplete] = useState(false);
+  const [actionEvents, setActionEvents] = useState(0);
   const simuleTool = useMemo(() => getSimuleTool(tool), [tool]);
   const profile = useMemo(() => getToolOpsProfile(tool), [tool]);
   const opsContext = useMemo(() => createOpsToolContext({
@@ -539,19 +383,20 @@ export default function OpsSimuleToolModal({
     chainPosition,
     chainTotal,
   }), [target, objective, step, tool, chainPosition, chainTotal]);
-  const requiredScore = getRequiredScore(objective);
   const directEffects = profile.effects.filter((effect) => step.accepts.includes(effect));
   const bridgedEffects = availableEffects.filter((effect) => step.accepts.includes(effect) && !profile.effects.includes(effect));
-  const operationScore = Math.round((bestScore * 0.56) + (counterScore * 0.2) + (proofScore * 0.24));
-  const requiredProofScore = 60;
-  const canComplete = operationScore >= requiredScore && proofScore >= requiredProofScore;
+  const toolTip = buildToolTip({ tool, step, opsContext, directEffects, bridgedEffects });
+  const toolActionComplete = bestSignal > 0 && actionEvents > 0;
+  const canComplete = toolActionComplete && proofComplete;
   const isFinalChainSegment = chainPosition >= chainTotal;
 
   const handleScoreChange = (score: number) => {
     const normalized = clampScore(score);
-    setCurrentScore(normalized);
-    setBestScore((current) => Math.max(current, normalized));
-    setScoreEvents((current) => current + 1);
+    setCurrentSignal(normalized);
+    if (normalized > 0) {
+      setBestSignal((current) => Math.max(current, normalized));
+      setActionEvents((current) => current + 1);
+    }
   };
 
   return (
@@ -605,49 +450,39 @@ export default function OpsSimuleToolModal({
               <div className="rounded-2xl border-[3px] border-black bg-white p-4">
                 <div className="mb-3 flex items-center gap-2">
                   <Target size={20} strokeWidth={3} className="text-purple-primary" />
-                  <h3 className="font-fredoka text-xl font-black text-purple-darker">Step Gate</h3>
+                  <h3 className="font-fredoka text-xl font-black text-purple-darker">Completion Gate</h3>
                 </div>
                 <p className="font-nunito text-xs font-bold text-purple-dark">
-                  This modal commits segment {chainPosition}/{chainTotal} against {opsContext.target.platformName}. The VS step advances only after the ordered tool GUI, counter stack, and target proof are all strong enough.
+                  Segment {chainPosition}/{chainTotal} advances only after the ordered GUI action is complete and the target proof artifacts match {opsContext.target.platformName}.
                 </p>
-                <div className="mt-4 rounded-xl border-[3px] border-black bg-purple-pale p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="font-nunito text-[10px] font-black uppercase text-purple-dark">Operation score</span>
-                    <span className="font-fredoka text-xl font-black text-purple-darker">{operationScore}/100</span>
+                <div className="mt-4 space-y-2 rounded-xl border-[3px] border-black bg-purple-pale p-3">
+                  <div className="flex items-center justify-between gap-2 rounded-xl border-2 border-black bg-white px-3 py-2">
+                    <span className="font-nunito text-[10px] font-black uppercase text-purple-dark">Tool action</span>
+                    <span className={`font-nunito text-[10px] font-black uppercase ${toolActionComplete ? 'text-green-success' : 'text-purple-primary'}`}>
+                      {toolActionComplete ? 'Complete' : 'Waiting'}
+                    </span>
                   </div>
-                  <div className="h-4 overflow-hidden rounded-full border-2 border-black bg-white">
-                    <div
-                      className="h-full bg-green-success"
-                      style={{ width: `${operationScore}%` }}
-                    />
+                  <div className="flex items-center justify-between gap-2 rounded-xl border-2 border-black bg-white px-3 py-2">
+                    <span className="font-nunito text-[10px] font-black uppercase text-purple-dark">Target proof</span>
+                    <span className={`font-nunito text-[10px] font-black uppercase ${proofComplete ? 'text-green-success' : 'text-purple-primary'}`}>
+                      {proofComplete ? 'Verified' : 'Select matches'}
+                    </span>
                   </div>
-                  <p className="mt-2 font-nunito text-[10px] font-black uppercase text-purple-primary">
-                    Required {requiredScore}/100 · Tool {bestScore}/100 · Counter {counterScore}/100 · Proof {proofScore}/100
-                  </p>
-                  <p className="mt-1 font-nunito text-[10px] font-black uppercase text-purple-light">
-                    Current tool {currentScore}/100 · Events {scoreEvents}
+                  <p className="font-nunito text-[10px] font-black uppercase text-purple-light">
+                    Latest signal {currentSignal > 0 ? 'valid' : 'none'} - Confirmed actions {actionEvents}
                   </p>
                   {nextChainToolName && (
-                    <p className="mt-1 font-nunito text-[10px] font-black uppercase text-purple-dark">
+                    <p className="font-nunito text-[10px] font-black uppercase text-purple-dark">
                       Next segment: {nextChainToolName}
                     </p>
                   )}
                 </div>
               </div>
 
-              <div className="mt-3">
-                <CounterStackChallenge
-                  counters={step.defenderCounters}
-                  opsContext={opsContext}
-                  onScoreChange={(score) => setCounterScore(clampScore(score))}
-                />
-              </div>
-
               <ArtifactProofChallenge
                 opsContext={opsContext}
-                onScoreChange={(score) => setProofScore(clampScore(score))}
+                onScoreChange={(score) => setProofComplete(clampScore(score) === 100)}
               />
-
               <div className="mt-3 rounded-2xl border-[3px] border-black bg-white p-4">
                 <div className="mb-3 flex items-center gap-2">
                   <Activity size={20} strokeWidth={3} className="text-blue-info" />
@@ -701,27 +536,30 @@ export default function OpsSimuleToolModal({
             </aside>
 
             <main className="min-h-0 overflow-y-auto bg-white p-4">
-              <div className="mb-3 flex flex-col gap-2 rounded-2xl border-[3px] border-black bg-purple-pale p-3 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles size={20} strokeWidth={3} className="text-purple-primary" />
-                  <div>
-                    <p className="font-fredoka text-lg font-black text-purple-darker">
-                      Play the simuletool GUI
-                    </p>
-                    <p className="font-nunito text-xs font-bold text-purple-dark">
-                      Use the actual controls below; the operation result uses your best score.
-                    </p>
-                    <p className="font-nunito text-[10px] font-black uppercase text-purple-primary">
-                      Target-bound: {opsContext.target.primaryDomain} · {opsContext.target.databaseName}
-                    </p>
+              <div className="mb-3 rounded-2xl border-[3px] border-black bg-purple-pale p-3">
+                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                  <div className="flex items-start gap-2">
+                    <Sparkles size={20} strokeWidth={3} className="mt-0.5 shrink-0 text-purple-primary" />
+                    <div>
+                      <p className="font-fredoka text-lg font-black text-purple-darker">
+                        {toolTip.title}
+                      </p>
+                      <p className="font-nunito text-xs font-bold text-purple-dark">
+                        {toolTip.action}
+                      </p>
+                      <p className="mt-1 font-nunito text-[10px] font-black uppercase text-purple-primary">
+                        {toolTip.target}
+                      </p>
+                    </div>
                   </div>
+                  <span className={`rounded-xl border-[3px] border-black px-3 py-2 font-nunito text-[10px] font-black uppercase ${toolActionComplete ? 'bg-green-success text-black' : 'bg-white text-purple-darker'}`}>
+                    {toolActionComplete ? 'Tool action complete' : 'Finish GUI action'}
+                  </span>
                 </div>
-                <div className="flex items-center gap-2 rounded-xl border-[3px] border-black bg-white px-3 py-2">
-                  <Gauge size={18} strokeWidth={3} className="text-green-success" />
-                  <span className="font-fredoka text-lg font-black text-purple-darker">{operationScore}/100</span>
-                </div>
+                <p className="mt-2 rounded-xl border-2 border-black bg-white px-3 py-2 font-nunito text-[11px] font-bold text-purple-dark">
+                  Tip: {toolTip.done}
+                </p>
               </div>
-
               <div className="overflow-hidden rounded-2xl border-[3px] border-black bg-white">
                 <SimuleGame
                   gameId={simuleTool?.gameId ?? tool.name}
@@ -738,18 +576,20 @@ export default function OpsSimuleToolModal({
                 <>
                   <CheckCircle size={18} strokeWidth={3} className="text-green-success" />
                   {isFinalChainSegment
-                    ? 'Operation run is strong enough to complete this VS step.'
-                    : 'Operation run is strong enough to commit this chain segment.'}
+                    ? 'Target action and proof verified. Complete this VS step.'
+                    : 'Target action and proof verified. Commit this chain segment.'}
                 </>
               ) : (
                 <>
-                  <Zap size={18} strokeWidth={3} className="text-yellow-accent" />
-                  Reach {requiredScore}/100 and target proof {requiredProofScore}/100 to submit this chain segment.
+                  <Target size={18} strokeWidth={3} className="text-purple-primary" />
+                  {!toolActionComplete
+                    ? 'Complete the target action inside this simuletool.'
+                    : 'Select every correct target proof artifact below.'}
                 </>
               )}
             </div>
             <button
-              onClick={() => onComplete(operationScore)}
+              onClick={() => onComplete(100)}
               disabled={!canComplete}
               className={`flex items-center justify-center gap-2 rounded-2xl border-4 border-black px-5 py-3 font-fredoka text-lg font-black transition-transform ${
                 canComplete
