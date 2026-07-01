@@ -57,12 +57,13 @@ import {
   type OpsProgress,
   type OpsDefenseControl,
 } from '@/lib/opsEngine';
-import { createOpsTargetProfile } from '@/lib/opsContext';
+import { createOpsTargetProfile, type OpsCarryArtifact } from '@/lib/opsContext';
 import OpsSimuleToolModal from './OpsSimuleToolModal';
 
 export type { OpsMatchSummary };
 
 const MATCH_SECONDS = 300;
+const EMPTY_CARRY_ARTIFACTS: OpsCarryArtifact[] = [];
 
 const FAMILY_COLORS: Record<OpsFamily, string> = {
   'Web Breach': '#A78BFA',
@@ -177,6 +178,7 @@ export function OpsBattleMode({
   const [usedToolIds, setUsedToolIds] = useState<number[]>([]);
   const [finished, setFinished] = useState(false);
   const [activeToolRun, setActiveToolRun] = useState<AttackTool | null>(null);
+  const [carryArtifactsMap, setCarryArtifactsMap] = useState<Record<string, OpsCarryArtifact[]>>({});
 
   const targetProfile = useMemo(() => createOpsTargetProfile(target), [target]);
   const ownedIds = useMemo(() => new Set(getUserTools(user.id).map((tool) => tool.id)), [user.id]);
@@ -231,7 +233,7 @@ export function OpsBattleMode({
     setActiveToolRun(tool);
   };
 
-  const handleToolUse = (tool: AttackTool, simuleScore: number) => {
+  const handleToolUse = (tool: AttackTool, simuleScore: number, emittedArtifacts: OpsCarryArtifact[] = []) => {
     if (finished) return;
     setActiveToolRun(null);
     setUsedToolIds((current) => current.includes(tool.id) ? current : [...current, tool.id]);
@@ -245,6 +247,22 @@ export function OpsBattleMode({
       availableEffects: pinnedEffects,
       simuleScore,
     });
+
+    if (outcome.status === 'complete' && emittedArtifacts.length > 0) {
+      setCarryArtifactsMap((current) => {
+        const existing = current[selectedObjective.id] ?? [];
+        const next = [...existing];
+        emittedArtifacts
+          .filter((artifact) => artifact.objectiveId === selectedObjective.id)
+          .forEach((artifact) => {
+            if (!next.some((item) => item.id === artifact.id)) next.push(artifact);
+          });
+        return {
+          ...current,
+          [selectedObjective.id]: next,
+        };
+      });
+    }
 
     setProgressMap((current) => {
       const existing = current[selectedObjective.id];
@@ -465,8 +483,9 @@ export function OpsBattleMode({
           chainPosition={activeModalChainIndex >= 0 ? activeModalChainIndex + 1 : 1}
           chainTotal={Math.max(1, activeModalChainItems.length)}
           nextChainToolName={activeModalChainIndex >= 0 ? activeModalChainItems[activeModalChainIndex + 1]?.tool.name : undefined}
+          carryArtifacts={carryArtifactsMap[selectedObjective.id] ?? EMPTY_CARRY_ARTIFACTS}
           onCancel={() => setActiveToolRun(null)}
-          onComplete={(score) => handleToolUse(activeToolRun, score)}
+          onComplete={(score, emittedArtifacts) => handleToolUse(activeToolRun, score, emittedArtifacts)}
         />
       )}
     </motion.div>

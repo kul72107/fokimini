@@ -61,6 +61,7 @@ import type { AttackTool, BattleTarget } from '@/lib/battleEngine';
 import {
   createOpsToolContext,
   type OpsProofOption,
+  type OpsCarryArtifact,
   type OpsToolContext,
 } from '@/lib/opsContext';
 
@@ -75,8 +76,9 @@ interface Props {
   chainPosition: number;
   chainTotal: number;
   nextChainToolName?: string;
+  carryArtifacts?: OpsCarryArtifact[];
   onCancel: () => void;
-  onComplete: (score: number) => void;
+  onComplete: (score: number, emittedArtifacts?: OpsCarryArtifact[]) => void;
 }
 
 function clampScore(score: number) {
@@ -274,12 +276,14 @@ function buildToolTip({
   opsContext,
   directEffects,
   bridgedEffects,
+  carryRequirement,
 }: {
   tool: AttackTool;
   step: OpsStep;
   opsContext: OpsToolContext;
   directEffects: OpsEffect[];
   bridgedEffects: OpsEffect[];
+  carryRequirement?: OpsToolContext['carryRequirement'];
 }) {
   const effects = [...new Set([...directEffects, ...bridgedEffects, ...step.accepts.slice(0, 2)])]
     .slice(0, 3)
@@ -288,9 +292,13 @@ function buildToolTip({
 
   return {
     title: `Finish ${step.title}`,
-    action: `Use ${tool.name} only against ${opsContext.target.platformName}. The relevant target is ${opsContext.target.primaryDomain}.`,
+    action: carryRequirement
+      ? `Carry ${carryRequirement.expectedLabel} from ${carryRequirement.sourceToolName}, then use ${tool.name} only against ${opsContext.target.platformName}.`
+      : `Use ${tool.name} only against ${opsContext.target.platformName}. The relevant target is ${opsContext.target.primaryDomain}.`,
     target: `Stay on the matching assets: ${opsContext.target.apiName}, ${opsContext.target.databaseName}, ${opsContext.target.sessionCookieName}, or the service shown inside the GUI.`,
-    done: `Complete the GUI action that proves ${effects || step.result}, then select only the matching target proof artifacts.`,
+    done: carryRequirement
+      ? `${carryRequirement.prompt} Complete the GUI action that proves ${effects || step.result}.`
+      : `Complete the GUI action that proves ${effects || step.result}, then select only the matching target proof artifacts.`,
   };
 }
 
@@ -357,6 +365,67 @@ function ArtifactProofChallenge({
   );
 }
 
+function CarryArtifactChallenge({
+  requirement,
+  complete,
+  onComplete,
+}: {
+  requirement?: OpsToolContext['carryRequirement'];
+  complete: boolean;
+  onComplete: (complete: boolean) => void;
+}) {
+  const [selected, setSelected] = useState<string | null>(null);
+
+  if (!requirement) return null;
+
+  const choose = (option: NonNullable<OpsToolContext['carryRequirement']>['options'][number]) => {
+    setSelected(option.id);
+    onComplete(option.correct);
+  };
+
+  return (
+    <div
+      data-ops-carry="requirement"
+      data-ops-carry-complete={complete ? 'true' : 'false'}
+      className="mb-3 rounded-2xl border-[3px] border-black bg-yellow-accent/30 p-3"
+    >
+      <div className="mb-2 flex items-center gap-2">
+        <Puzzle size={20} strokeWidth={3} className="text-purple-primary" />
+        <p className="font-fredoka text-lg font-black text-purple-darker">Chain Output</p>
+      </div>
+      <p className="font-nunito text-xs font-bold text-purple-dark">
+        {requirement.prompt}
+      </p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {requirement.options.map((option) => {
+          const active = selected === option.id;
+          return (
+            <button
+              key={option.id}
+              data-ops-carry-option={option.correct ? 'correct' : 'decoy'}
+              data-ops-carry-selected={active ? 'true' : 'false'}
+              onClick={() => choose(option)}
+              className={`rounded-xl border-2 border-black px-3 py-2 text-left transition-transform hover:scale-[1.01] ${
+                active
+                  ? option.correct
+                    ? 'bg-green-success'
+                    : 'bg-red-danger/30'
+                  : 'bg-white'
+              }`}
+            >
+              <span className="block font-nunito text-[11px] font-black text-purple-darker">
+                {option.label}
+              </span>
+              <span className="block font-nunito text-[10px] font-bold text-purple-dark">
+                {option.detail}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 export default function OpsSimuleToolModal({
   tool,
   objective,
@@ -366,12 +435,14 @@ export default function OpsSimuleToolModal({
   chainPosition,
   chainTotal,
   nextChainToolName,
+  carryArtifacts = [],
   onCancel,
   onComplete,
 }: Props) {
   const [currentSignal, setCurrentSignal] = useState(0);
   const [bestSignal, setBestSignal] = useState(0);
   const [proofComplete, setProofComplete] = useState(false);
+  const [carryComplete, setCarryComplete] = useState(false);
   const [actionEvents, setActionEvents] = useState(0);
   const simuleTool = useMemo(() => getSimuleTool(tool), [tool]);
   const profile = useMemo(() => getToolOpsProfile(tool), [tool]);
@@ -382,12 +453,15 @@ export default function OpsSimuleToolModal({
     tool,
     chainPosition,
     chainTotal,
-  }), [target, objective, step, tool, chainPosition, chainTotal]);
+    carryArtifacts,
+    opsToolId: simuleTool?.id ?? simuleTool?.gameId,
+  }), [target, objective, step, tool, chainPosition, chainTotal, carryArtifacts, simuleTool?.id, simuleTool?.gameId]);
   const directEffects = profile.effects.filter((effect) => step.accepts.includes(effect));
   const bridgedEffects = availableEffects.filter((effect) => step.accepts.includes(effect) && !profile.effects.includes(effect));
-  const toolTip = buildToolTip({ tool, step, opsContext, directEffects, bridgedEffects });
+  const toolTip = buildToolTip({ tool, step, opsContext, directEffects, bridgedEffects, carryRequirement: opsContext.carryRequirement });
   const toolActionComplete = bestSignal > 0 && actionEvents > 0;
-  const canComplete = toolActionComplete;
+  const carryGateComplete = !opsContext.carryRequirement || carryComplete;
+  const canComplete = toolActionComplete && carryGateComplete;
   const isFinalChainSegment = chainPosition >= chainTotal;
 
   const handleScoreChange = (score: number) => {
@@ -453,13 +527,19 @@ export default function OpsSimuleToolModal({
                   <h3 className="font-fredoka text-xl font-black text-purple-darker">Completion Gate</h3>
                 </div>
                 <p className="font-nunito text-xs font-bold text-purple-dark">
-                  Segment {chainPosition}/{chainTotal} advances when the ordered GUI action is complete. Target proof stays available for context, but it does not block queue progress.
+                  Segment {chainPosition}/{chainTotal} advances when the ordered GUI action and any chain output handoff are complete. Target proof stays available for context, but it does not block queue progress.
                 </p>
                 <div className="mt-4 space-y-2 rounded-xl border-[3px] border-black bg-purple-pale p-3">
                   <div className="flex items-center justify-between gap-2 rounded-xl border-2 border-black bg-white px-3 py-2">
                     <span className="font-nunito text-[10px] font-black uppercase text-purple-dark">Tool action</span>
                     <span className={`font-nunito text-[10px] font-black uppercase ${toolActionComplete ? 'text-green-success' : 'text-purple-primary'}`}>
                       {toolActionComplete ? 'Complete' : 'Waiting'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 rounded-xl border-2 border-black bg-white px-3 py-2">
+                    <span className="font-nunito text-[10px] font-black uppercase text-purple-dark">Chain output</span>
+                    <span className={`font-nunito text-[10px] font-black uppercase ${carryGateComplete ? 'text-green-success' : 'text-purple-primary'}`}>
+                      {opsContext.carryRequirement ? (carryGateComplete ? 'Complete' : 'Waiting') : 'None'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 rounded-xl border-2 border-black bg-white px-3 py-2">
@@ -552,14 +632,19 @@ export default function OpsSimuleToolModal({
                       </p>
                     </div>
                   </div>
-                  <span className={`rounded-xl border-[3px] border-black px-3 py-2 font-nunito text-[10px] font-black uppercase ${toolActionComplete ? 'bg-green-success text-black' : 'bg-white text-purple-darker'}`}>
-                    {toolActionComplete ? 'Tool action complete' : 'Finish GUI action'}
+                  <span className={`rounded-xl border-[3px] border-black px-3 py-2 font-nunito text-[10px] font-black uppercase ${canComplete ? 'bg-green-success text-black' : 'bg-white text-purple-darker'}`}>
+                    {canComplete ? 'Tool action complete' : toolActionComplete ? 'Use chain output' : 'Finish GUI action'}
                   </span>
                 </div>
                 <p className="mt-2 rounded-xl border-2 border-black bg-white px-3 py-2 font-nunito text-[11px] font-bold text-purple-dark">
                   Tip: {toolTip.done}
                 </p>
               </div>
+              <CarryArtifactChallenge
+                requirement={opsContext.carryRequirement}
+                complete={carryComplete}
+                onComplete={setCarryComplete}
+              />
               <div className="overflow-hidden rounded-2xl border-[3px] border-black bg-white">
                 <SimuleGame
                   gameId={simuleTool?.gameId ?? tool.name}
@@ -576,20 +661,22 @@ export default function OpsSimuleToolModal({
                 <>
                   <CheckCircle size={18} strokeWidth={3} className="text-green-success" />
                   {isFinalChainSegment
-                    ? 'Target action and proof verified. Complete this VS step.'
-                    : 'Target action and proof verified. Commit this chain segment.'}
+                    ? 'Target action verified. Complete this VS step.'
+                    : 'Target action verified. Commit this chain segment.'}
                 </>
               ) : (
                 <>
                   <Target size={18} strokeWidth={3} className="text-purple-primary" />
                   {!toolActionComplete
                     ? 'Complete the target action inside this simuletool.'
-                    : 'Tool action complete. Commit to advance the simuletool queue.'}
+                    : !carryGateComplete
+                      ? 'Use the previous chain output before committing this segment.'
+                      : 'Tool action complete. Commit to advance the simuletool queue.'}
                 </>
               )}
             </div>
             <button
-              onClick={() => onComplete(100)}
+              onClick={() => onComplete(100, opsContext.emittedArtifacts)}
               disabled={!canComplete}
               className={`flex items-center justify-center gap-2 rounded-2xl border-4 border-black px-5 py-3 font-fredoka text-lg font-black transition-transform ${
                 canComplete

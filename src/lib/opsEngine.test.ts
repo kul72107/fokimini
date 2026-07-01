@@ -322,4 +322,56 @@ describe('target-bound VS operation context', () => {
     expect(context.contract.options.every((option) => !option.label.includes('google.com'))).toBe(true);
     expect(context.contract.options.every((option) => !option.label.includes('github.com'))).toBe(true);
   });
-});
+  it('requires chained tool outputs before later VS simuletools can pass their handoff gate', () => {
+    const objective = OPS_OBJECTIVES.find((item) => item.id === 'database-leak');
+    expect(objective).toBeDefined();
+    const firstStep = objective!.steps[0];
+    const firstChain = getStepToolChainItems(firstStep);
+
+    const dnsContext = createOpsToolContext({
+      target: lowDefenseTarget,
+      objective: objective!,
+      step: firstStep,
+      tool: firstChain[0].tool,
+      chainPosition: 1,
+      chainTotal: firstChain.length,
+      opsToolId: firstChain[0].opsToolId,
+    });
+
+    expect(dnsContext.carryRequirement).toBeUndefined();
+    expect(dnsContext.emittedArtifacts.map((artifact) => artifact.value)).toContain('app.test-target.ops');
+
+    const portScanContext = createOpsToolContext({
+      target: lowDefenseTarget,
+      objective: objective!,
+      step: firstStep,
+      tool: firstChain[1].tool,
+      chainPosition: 2,
+      chainTotal: firstChain.length,
+      carryArtifacts: dnsContext.emittedArtifacts,
+      opsToolId: firstChain[1].opsToolId,
+    });
+
+    expect(portScanContext.carryRequirement?.sourceToolName).toBe('DNS Lookup GUI');
+    expect(portScanContext.carryRequirement?.expectedValue).toBe('app.test-target.ops');
+    expect(portScanContext.carryRequirement?.options.some((option) => option.correct && option.value === 'app.test-target.ops')).toBe(true);
+    expect(portScanContext.carryRequirement?.options.some((option) => !option.correct)).toBe(true);
+
+    const dataStep = objective!.steps[1];
+    const dataChain = getStepToolChainItems(dataStep);
+    const sqlSafariContext = createOpsToolContext({
+      target: lowDefenseTarget,
+      objective: objective!,
+      step: dataStep,
+      tool: dataChain[0].tool,
+      chainPosition: 1,
+      chainTotal: dataChain.length,
+      carryArtifacts: [...dnsContext.emittedArtifacts, ...portScanContext.emittedArtifacts],
+      opsToolId: dataChain[0].opsToolId,
+    });
+
+    expect(sqlSafariContext.carryRequirement?.sourceToolName).toBe('Advanced Port Scan');
+    expect(sqlSafariContext.carryRequirement?.expectedValue).toBe('app.test-target.ops:443');
+    expect(sqlSafariContext.carryRequirement?.options.every((option) => !option.value.includes('google.com'))).toBe(true);
+    expect(sqlSafariContext.carryRequirement?.options.every((option) => !option.value.includes('github.com'))).toBe(true);
+  });});

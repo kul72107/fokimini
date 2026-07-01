@@ -227,6 +227,11 @@ export default function NmapScanner({ onScoreChange, opsContext }: Props) {
 
   const startScan = () => {
     if (isScanning) return;
+    if (opsContext) {
+      const commandScore = Math.max(totalScore, 10);
+      setTotalScore(commandScore);
+      onScoreChangeRef.current(Math.min(100, commandScore));
+    }
     setIsScanning(true);
     setScanComplete(false);
     setScanProgress(0);

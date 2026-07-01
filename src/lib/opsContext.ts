@@ -110,6 +110,63 @@ export interface OpsStepContract {
   options: OpsProofOption[];
 }
 
+export type OpsCarryKind =
+  | 'domain'
+  | 'host'
+  | 'web'
+  | 'service'
+  | 'port'
+  | 'route'
+  | 'table'
+  | 'query'
+  | 'key'
+  | 'secret'
+  | 'credential'
+  | 'identity'
+  | 'session'
+  | 'payload'
+  | 'endpoint'
+  | 'traffic'
+  | 'cert'
+  | 'policy'
+  | 'log'
+  | 'backup'
+  | 'proof';
+
+export interface OpsCarryArtifact {
+  id: string;
+  kind: OpsCarryKind;
+  label: string;
+  value: string;
+  detail: string;
+  sourceToolId: string;
+  sourceToolName: string;
+  sourceStepId: string;
+  targetId: string;
+  objectiveId: string;
+  chainPosition: number;
+}
+
+export interface OpsCarryOption {
+  id: string;
+  label: string;
+  value: string;
+  detail: string;
+  correct: boolean;
+}
+
+export interface OpsCarryRequirement {
+  id: string;
+  label: string;
+  prompt: string;
+  expectedValue: string;
+  expectedLabel: string;
+  sourceArtifactId: string;
+  sourceToolId: string;
+  sourceToolName: string;
+  sourceStepId: string;
+  options: OpsCarryOption[];
+}
 export interface OpsToolContext {
   target: OpsTargetProfile;
   objective: {
@@ -133,6 +190,9 @@ export interface OpsToolContext {
   };
   chainPosition: number;
   chainTotal: number;
+  carryArtifacts: OpsCarryArtifact[];
+  carryRequirement?: OpsCarryRequirement;
+  emittedArtifacts: OpsCarryArtifact[];
   contract: OpsStepContract;
 }
 
@@ -444,6 +504,283 @@ export function createOpsStepContract(
   };
 }
 
+const TOOL_CARRY_NEEDS: Record<string, OpsCarryKind[]> = {
+  'advanced-port-scan': ['host', 'domain'],
+  'nmap-scanner': ['route', 'host', 'domain'],
+  'port-scanner': ['host', 'domain'],
+  'dns-lookup-gui': ['domain', 'identity'],
+  'dns-resolver': ['payload', 'endpoint', 'route'],
+  'sql-safari': ['service', 'route', 'host'],
+  'sql-injector-gui': ['table', 'route', 'credential'],
+  'encryption-pipeline': ['query', 'secret', 'session', 'backup', 'payload', 'proof'],
+  'hash-cracker-gui': ['key', 'identity', 'credential'],
+  'hash-hacker': ['key', 'identity', 'credential'],
+  'xor-tool': ['domain', 'route', 'log'],
+  'proxy-server': ['session', 'route', 'traffic', 'key'],
+  'vpn-tunnel': ['route', 'service', 'session'],
+  'network-navigator': ['host', 'domain', 'traffic'],
+  'network-packet-tracer': ['session', 'route', 'traffic'],
+  'packet-tracer': ['session', 'route', 'traffic'],
+  'cert-viewer-gui': ['traffic', 'host', 'route', 'web'],
+  'ssl-handshake': ['credential', 'identity', 'cert'],
+  'cert-champion': ['policy', 'log', 'cert'],
+  'xss-tester-gui': ['route', 'web', 'service'],
+  'xss-xpert': ['cert', 'web', 'session'],
+  'trojan-builder': ['payload', 'endpoint', 'web'],
+  'keylogger-sim': ['endpoint', 'payload', 'session'],
+  'log-analyzer': ['endpoint', 'session', 'traffic'],
+  'access-ace': ['credential', 'session', 'web'],
+  'phishing-detective': ['identity', 'domain', 'web'],
+  'phishing-sim-gui': ['identity', 'web', 'payload'],
+  'load-balancer': ['payload', 'traffic', 'route'],
+  'firewall-defender': ['log', 'traffic', 'policy'],
+};
+
+function serviceForStep(target: OpsTargetProfile, step: OpsStep) {
+  const accepts = new Set(step.accepts);
+  const creates = new Set(step.creates);
+  const id = step.id.toLowerCase();
+  const serviceKey = id.includes('backup') || accepts.has('backup')
+    ? 'backup'
+    : id.includes('vendor') || id.includes('widget')
+      ? 'vendor'
+      : accepts.has('sql') || creates.has('sql')
+        ? 'db'
+        : accepts.has('proxy') || accepts.has('session')
+          ? 'api'
+          : accepts.has('cert') || accepts.has('web') || creates.has('web')
+            ? 'web'
+            : accepts.has('network')
+              ? 'api'
+              : 'web';
+  return target.services.find((service) => service.key === serviceKey) ?? target.services[0];
+}
+
+function addUniqueArtifact(artifacts: OpsCarryArtifact[], artifact: OpsCarryArtifact) {
+  if (!artifacts.some((item) => item.kind === artifact.kind && item.value === artifact.value)) {
+    artifacts.push(artifact);
+  }
+}
+
+function makeCarryArtifact({
+  target,
+  objective,
+  step,
+  tool,
+  opsToolId,
+  chainPosition,
+  kind,
+  label,
+  value,
+  detail,
+}: {
+  target: OpsTargetProfile;
+  objective: Pick<OpsObjective, 'id'>;
+  step: OpsStep;
+  tool?: AttackTool;
+  opsToolId?: string;
+  chainPosition: number;
+  kind: OpsCarryKind;
+  label: string;
+  value: string;
+  detail: string;
+}): OpsCarryArtifact {
+  const sourceToolId = opsToolId ?? slugify(tool?.name ?? 'simuletool');
+  const sourceToolName = tool?.name ?? sourceToolId;
+  const seed = `${target.targetId}-${objective.id}-${step.id}-${sourceToolId}-${kind}-${value}-${chainPosition}`;
+  return {
+    id: `carry-${hashSeed(seed).toString(16)}-${kind}`,
+    kind,
+    label,
+    value,
+    detail,
+    sourceToolId,
+    sourceToolName,
+    sourceStepId: step.id,
+    targetId: target.targetId,
+    objectiveId: objective.id,
+    chainPosition,
+  };
+}
+
+export function createOpsCarryArtifacts({
+  target,
+  objective,
+  step,
+  tool,
+  opsToolId,
+  chainPosition,
+}: {
+  target: OpsTargetProfile;
+  objective: Pick<OpsObjective, 'id'>;
+  step: OpsStep;
+  tool?: AttackTool;
+  opsToolId?: string;
+  chainPosition: number;
+}): OpsCarryArtifact[] {
+  const artifacts: OpsCarryArtifact[] = [];
+  const toolKey = (opsToolId ?? tool?.name ?? '').toLowerCase();
+  const service = serviceForStep(target, step);
+  const push = (kind: OpsCarryKind, label: string, value: string | number, detail: string) => {
+    addUniqueArtifact(artifacts, makeCarryArtifact({
+      target,
+      objective,
+      step,
+      tool,
+      opsToolId,
+      chainPosition,
+      kind,
+      label,
+      value: String(value),
+      detail,
+    }));
+  };
+
+  if (toolKey.includes('whois')) {
+    push('domain', 'Registered root domain', target.rootDomain, `WHOIS scope for ${target.orgName}.`);
+    push('identity', 'Responsible contact', target.adminEmail, `Identity clue tied to ${target.platformName}.`);
+  }
+  if (toolKey.includes('dns')) {
+    push('host', 'Resolved app host', target.primaryDomain, `${target.hosts.resolver} resolves the active app host.`);
+    push('domain', 'Resolved root domain', target.rootDomain, `DNS zone remains inside ${target.orgName}.`);
+  }
+  if (toolKey.includes('nmap') || toolKey.includes('port-scan') || toolKey.includes('port-scanner')) {
+    push('service', 'Open service endpoint', `${service.host}:${service.port}`, `${service.service} on ${service.role}.`);
+    push('port', 'Open port', service.port, `${service.label} exposes ${service.service}.`);
+  }
+  if (toolKey.includes('packet') || toolKey.includes('tracer')) {
+    push('traffic', 'Observed traffic path', `${target.ips.client} -> ${target.primaryDomain}:443`, `Traffic observed inside ${target.platformName}.`);
+  }
+  if (toolKey.includes('sql-safari')) {
+    push('table', 'Candidate data table', `${target.databaseName}.customers`, `Table route found from ${target.apiName}.`);
+    push('route', 'Data API route', `${target.hosts.api}/reports/customer-proof`, `Route belongs to ${target.apiName}.`);
+  }
+  if (toolKey.includes('sql-injector')) {
+    push('query', 'Controlled query window', `readonly:${target.databaseName}:customer_id`, `Safe query window for sanitized proof only.`);
+  }
+  if (toolKey.includes('xor')) {
+    push('key', 'Derived XOR key', target.xorKey, `Key pattern bound to ${target.repoName}.`);
+    push('secret', 'Simulated API key name', target.apiKeyName, `Secret label from ${target.apiName}.`);
+  }
+  if (toolKey.includes('hash') || toolKey.includes('access')) {
+    push('credential', 'Validated account clue', target.serviceAccount, `Credential clue scoped to ${target.platformName}.`);
+  }
+  if (toolKey.includes('proxy') || toolKey.includes('vpn') || toolKey.includes('load-balancer') || toolKey.includes('network-navigator')) {
+    push('route', 'Approved route', `${service.host}:${service.port}`, `Route follows ${service.label}.`);
+    push('session', 'Scoped session lane', target.sessionCookieName, `Session lane is revocable on ${target.platformName}.`);
+  }
+  if (toolKey.includes('cert') || toolKey.includes('ssl')) {
+    push('cert', 'Certificate fingerprint', target.certificate.fingerprint, `Certificate fingerprint for ${target.certificate.host}.`);
+  }
+  if (toolKey.includes('phishing')) {
+    push('identity', 'User journey identity', target.userEmail, `Social clue stays inside ${target.orgName}.`);
+  }
+  if (toolKey.includes('xss')) {
+    push('payload', 'Sandbox payload route', `${target.hosts.app}${target.uploadPath}`, `Sandbox-only payload route for ${target.platformName}.`);
+    push('route', 'Web interaction route', `${target.hosts.app}${target.cmsPath}`, `Web route belongs to ${target.platformName}.`);
+  }
+  if (toolKey.includes('trojan') || toolKey.includes('malware') || toolKey.includes('keylogger')) {
+    push('payload', 'Contained lab payload', target.safePayloadName, `Contained sample for ${target.platformName}.`);
+    push('endpoint', 'Endpoint process context', target.serviceAccount, `Endpoint context produced by ${target.orgName}.`);
+  }
+  if (toolKey.includes('log')) {
+    push('log', 'Relevant log event', target.logs.loginEvent, `Event belongs to ${target.platformName}.`);
+  }
+  if (toolKey.includes('encryption') || toolKey.includes('crypto') || toolKey.includes('stego')) {
+    push('proof', 'Sanitized proof bundle', step.result, `Proof bundle generated for ${target.platformName}.`);
+  }
+  if (toolKey.includes('firewall') || toolKey.includes('defender')) {
+    push('policy', 'Applied control policy', `${target.platformName} scoped control`, `Policy applies only to this VS target.`);
+  }
+
+  if (step.creates.includes('web')) push('route', 'Created web route', `${target.hosts.app}${target.cmsPath}`, `Created by ${step.title}.`);
+  if (step.creates.includes('sql')) push('table', 'Created data route', `${target.databaseName}.customers`, `Created by ${step.title}.`);
+  if (step.creates.includes('session')) push('session', 'Created session artifact', target.sessionCookieName, `Created by ${step.title}.`);
+  if (step.creates.includes('credential')) push('credential', 'Created credential clue', target.serviceAccount, `Created by ${step.title}.`);
+  if (step.creates.includes('payload')) push('payload', 'Created payload route', target.safePayloadName, `Created by ${step.title}.`);
+  if (step.creates.includes('endpoint')) push('endpoint', 'Created endpoint context', target.serviceAccount, `Created by ${step.title}.`);
+  if (step.creates.includes('exfil')) push('proof', 'Created proof artifact', step.result, `Created by ${step.title}.`);
+  if (step.creates.includes('backup')) push('backup', 'Created backup artifact', target.backupName, `Created by ${step.title}.`);
+  if (step.creates.includes('cert')) push('cert', 'Created trust artifact', target.certificate.fingerprint, `Created by ${step.title}.`);
+  if (step.creates.includes('log')) push('log', 'Created log artifact', target.logs.loginEvent, `Created by ${step.title}.`);
+  if (step.creates.includes('defense')) push('policy', 'Created defense artifact', `${target.platformName} defense receipt`, `Created by ${step.title}.`);
+
+  return artifacts;
+}
+
+function carryDecoyOptions(target: OpsTargetProfile, correctValue: string): OpsCarryOption[] {
+  const decoys: Omit<OpsCarryOption, 'id' | 'correct'>[] = [
+    { label: target.hosts.old, value: target.hosts.old, detail: 'Legacy host from the same lab, but not the chained output.' },
+    { label: target.hosts.cdn, value: target.hosts.cdn, detail: 'Static asset host, not the operation handoff.' },
+    { label: `${target.hosts.mail}:587`, value: `${target.hosts.mail}:587`, detail: 'Mail relay path, not this tool chain.' },
+    { label: target.standardUser, value: target.standardUser, detail: 'Normal user clue, not the artifact requested here.' },
+    { label: target.certificate.staleHost, value: target.certificate.staleHost, detail: 'Stale certificate host, not the active handoff.' },
+  ].filter((option) => option.value !== correctValue && option.label !== correctValue);
+
+  return decoys.slice(0, 3).map((option, index) => ({
+    ...option,
+    id: `carry-decoy-${index}`,
+    correct: false,
+  }));
+}
+
+export function createOpsCarryRequirement({
+  target,
+  objective,
+  step,
+  tool,
+  opsToolId,
+  chainPosition,
+  carryArtifacts,
+}: {
+  target: OpsTargetProfile;
+  objective: Pick<OpsObjective, 'id' | 'title'>;
+  step: OpsStep;
+  tool?: AttackTool;
+  opsToolId?: string;
+  chainPosition: number;
+  carryArtifacts: OpsCarryArtifact[];
+}): OpsCarryRequirement | undefined {
+  const needs = TOOL_CARRY_NEEDS[opsToolId ?? ''] ?? [];
+  if (needs.length === 0 || carryArtifacts.length === 0) return undefined;
+
+  const scopedArtifacts = carryArtifacts.filter((artifact) => (
+    artifact.targetId === target.targetId &&
+    artifact.objectiveId === objective.id &&
+    artifact.sourceToolId !== (opsToolId ?? '')
+  ));
+  const reversedArtifacts = [...scopedArtifacts].reverse();
+  const artifact = needs
+    .map((kind) => reversedArtifacts.find((candidate) => candidate.kind === kind))
+    .find((candidate): candidate is OpsCarryArtifact => Boolean(candidate));
+
+  if (!artifact) return undefined;
+
+  const correct: OpsCarryOption = {
+    id: 'carry-correct',
+    label: artifact.value,
+    value: artifact.value,
+    detail: `From ${artifact.sourceToolName}: ${artifact.label}.`,
+    correct: true,
+  };
+  const options = rotate([
+    correct,
+    ...carryDecoyOptions(target, artifact.value),
+  ], `${target.targetId}-${objective.id}-${step.id}-${opsToolId ?? 'tool'}-${artifact.id}`);
+
+  return {
+    id: `need-${artifact.id}-${opsToolId ?? slugify(tool?.name ?? 'tool')}-${chainPosition}`,
+    label: artifact.label,
+    prompt: `Use the ${artifact.label.toLowerCase()} from ${artifact.sourceToolName} before running ${tool?.name ?? 'this simuletool'} on ${target.platformName}.`,
+    expectedValue: artifact.value,
+    expectedLabel: artifact.label,
+    sourceArtifactId: artifact.id,
+    sourceToolId: artifact.sourceToolId,
+    sourceToolName: artifact.sourceToolName,
+    sourceStepId: artifact.sourceStepId,
+    options,
+  };
+}
 export function createOpsToolContext({
   target,
   objective,
@@ -451,6 +788,8 @@ export function createOpsToolContext({
   tool,
   chainPosition,
   chainTotal,
+  carryArtifacts = [],
+  opsToolId,
 }: {
   target: BattleTarget;
   objective: OpsObjective;
@@ -458,8 +797,31 @@ export function createOpsToolContext({
   tool?: AttackTool;
   chainPosition: number;
   chainTotal: number;
+  carryArtifacts?: OpsCarryArtifact[];
+  opsToolId?: string;
 }): OpsToolContext {
   const profile = createOpsTargetProfile(target);
+  const scopedCarryArtifacts = carryArtifacts.filter((artifact) => (
+    artifact.targetId === profile.targetId && artifact.objectiveId === objective.id
+  ));
+  const emittedArtifacts = createOpsCarryArtifacts({
+    target: profile,
+    objective,
+    step,
+    tool,
+    opsToolId,
+    chainPosition,
+  });
+  const carryRequirement = createOpsCarryRequirement({
+    target: profile,
+    objective,
+    step,
+    tool,
+    opsToolId,
+    chainPosition,
+    carryArtifacts: scopedCarryArtifacts,
+  });
+
   return {
     target: profile,
     objective: {
@@ -485,6 +847,9 @@ export function createOpsToolContext({
       : undefined,
     chainPosition,
     chainTotal,
+    carryArtifacts: scopedCarryArtifacts,
+    carryRequirement,
+    emittedArtifacts,
     contract: createOpsStepContract(profile, objective, step),
   };
 }

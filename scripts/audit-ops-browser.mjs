@@ -424,15 +424,18 @@ async function main() {
             ? text.slice(gateStart, gateEnd > gateStart ? gateEnd : gateStart + 700)
             : text;
           const gateLower = gateText.toLowerCase();
-          const forbiddenGateText = ['operation score', 'counter stack', 'required ', 'tool score', 'counter score', 'operation run is strong enough', 'reach '].filter((item) => gateLower.includes(item));
-          const toolActionComplete = gateLower.includes('tool action') && gateLower.includes('complete');
+          const forbiddenGateText = ['operation score', 'counter stack', 'tool score', 'counter score', 'operation run is strong enough', 'reach '].filter((item) => gateLower.includes(item));
+          const toolActionComplete = gateLower.includes('tool action') && gateLower.includes('latest signal valid');
           const proofVerified = gateLower.includes('target proof') && gateLower.includes('verified');
           const commit = [...document.querySelectorAll('button')].find((button) => /Commit Segment|Complete VS Step/.test(button.innerText));
+          const carryPanel = document.querySelector('.fixed [data-ops-carry="requirement"]');
           return {
             openedTool: ${JSON.stringify(openedTool)},
             toolActionComplete,
             proofVerified,
             forbiddenGateText,
+            carryVisible: Boolean(carryPanel),
+            carryComplete: !carryPanel || carryPanel.dataset.opsCarryComplete === 'true',
             commitText: commit ? commit.innerText.replace(/\\s+/g, ' ').trim() : null,
             commitDisabled: commit ? Boolean(commit.disabled) : null,
             fallbackVisible: text.includes('Ops Circuit'),
@@ -442,6 +445,62 @@ async function main() {
       `);
     }
 
+    async function satisfyCarryRequirement(label) {
+      const initial = await evaluate(`
+        (() => {
+          const panel = document.querySelector('.fixed [data-ops-carry="requirement"]');
+          const commit = [...document.querySelectorAll('button')].find((button) => /Commit Segment|Complete VS Step/.test(button.innerText));
+          return {
+            present: Boolean(panel),
+            complete: !panel || panel.dataset.opsCarryComplete === 'true',
+            commitDisabled: commit ? Boolean(commit.disabled) : null,
+          };
+        })()
+      `);
+      if (!initial?.present) return false;
+      if (!initial.complete && initial.commitDisabled === false) {
+        const snapshot = await pageSnapshot(evaluate);
+        throw new Error(`${label} enabled commit before the carried output was selected.\n${snapshot}`);
+      }
+
+      const wrong = await evaluate(`
+        (() => {
+          const wrongButton = [...document.querySelectorAll('.fixed button[data-ops-carry-option="decoy"]')][0];
+          const commit = [...document.querySelectorAll('button')].find((button) => /Commit Segment|Complete VS Step/.test(button.innerText));
+          if (!wrongButton) return { clicked: false, commitDisabled: commit ? Boolean(commit.disabled) : null };
+          wrongButton.scrollIntoView({ block: 'center', inline: 'center' });
+          wrongButton.click();
+          return { clicked: true, commitDisabled: commit ? Boolean(commit.disabled) : null };
+        })()
+      `);
+      if (wrong.clicked && wrong.commitDisabled === false) {
+        const snapshot = await pageSnapshot(evaluate);
+        throw new Error(`${label} enabled commit after a wrong carried output.\n${snapshot}`);
+      }
+
+      const correct = await evaluate(`
+        (() => {
+          const correctButton = [...document.querySelectorAll('.fixed button[data-ops-carry-option="correct"]')][0];
+          if (!correctButton) return false;
+          correctButton.scrollIntoView({ block: 'center', inline: 'center' });
+          correctButton.click();
+          return true;
+        })()
+      `);
+      if (!correct) {
+        const snapshot = await pageSnapshot(evaluate);
+        throw new Error(`${label} has no correct carried output option.\n${snapshot}`);
+      }
+      await waitFor(`${label} carried output accepted`, `
+        (() => {
+          const panel = document.querySelector('.fixed [data-ops-carry="requirement"]');
+          const commit = [...document.querySelectorAll('button')].find((button) => /Commit Segment|Complete VS Step/.test(button.innerText));
+          return panel && panel.dataset.opsCarryComplete === 'true' && commit && !commit.disabled;
+        })()
+      `, 8000);
+      console.error(`[audit] ${label} carried output gate accepts only the chained value`);
+      return true;
+    }
     async function selectTargetProof(label) {
       await waitFor(`${label} target proof visible`, `
         (() => {
@@ -480,26 +539,34 @@ async function main() {
     }
 
     async function assertSubmittable(state, label, expectedSubmit = 'Complete VS Step') {
+      let readyState = state;
+      if (readyState.carryVisible && !readyState.carryComplete) {
+        await satisfyCarryRequirement(label);
+        readyState = await readModalState(state.openedTool);
+      }
+
       if (
-        !state.modalVisible ||
-        state.fallbackVisible ||
-        state.commitText !== expectedSubmit ||
-        state.commitDisabled ||
-        !state.toolActionComplete ||
-        state.forbiddenGateText.length > 0
+        !readyState.modalVisible ||
+        readyState.fallbackVisible ||
+        readyState.commitText !== expectedSubmit ||
+        readyState.commitDisabled ||
+        !readyState.toolActionComplete ||
+        readyState.carryComplete === false ||
+        readyState.forbiddenGateText.length > 0
       ) {
         const snapshot = await pageSnapshot(evaluate);
-        throw new Error(`${label} modal did not enable commit after tool action: ${JSON.stringify(state)}\n${snapshot}`);
+        throw new Error(`${label} modal did not enable commit after required GUI action: ${JSON.stringify(readyState)}\n${snapshot}`);
       }
 
       await selectTargetProof(label);
-      const latest = await readModalState(state.openedTool);
+      const latest = await readModalState(readyState.openedTool);
       if (
         !latest.modalVisible ||
         latest.fallbackVisible ||
         latest.commitText !== expectedSubmit ||
         latest.commitDisabled ||
         !latest.toolActionComplete ||
+        latest.carryComplete === false ||
         !latest.proofVerified ||
         latest.forbiddenGateText.length > 0
       ) {
@@ -508,6 +575,7 @@ async function main() {
       }
       console.error(`[audit] ${label} modal is submittable`);
     }
+
     async function submitStep() {
       await evaluate(`
         (() => {
@@ -681,23 +749,49 @@ async function main() {
       `, 12000);
     }
 
+
+    async function launchNmapScan(label, scanType) {
+      await clickModalText(scanType);
+      const launched = await evaluate(`
+        (() => {
+          const buttons = [...document.querySelectorAll('.fixed button')].filter((button) => {
+            const rect = button.getBoundingClientRect();
+            const label = (button.innerText || button.textContent || '').replace(/\s+/g, ' ').trim();
+            return rect.width > 0 && rect.height > 0 && label.includes('LAUNCH SCAN') && !button.disabled;
+          });
+          const button = buttons[0];
+          if (!button) return false;
+          button.scrollIntoView({ block: 'center', inline: 'center' });
+          button.click();
+          return true;
+        })()
+      `);
+      if (!launched) {
+        const snapshot = await pageSnapshot(evaluate);
+        throw new Error(`${label} could not launch ${scanType}.\n${snapshot}`);
+      }
+      await waitFor(`${label} ${scanType} started`, `
+        (() => {
+          const text = document.body.innerText.replace(/\s+/g, ' ');
+          return text.includes('SCANNING...') || text.includes('OS Guess') || /Scans:\s*[1-9]/.test(text);
+        })()
+      `, 8000);
+    }
     async function runWebNmap(label) {
       await clickModalText('Shape traffic through the allowed service lane', true);
       await clickModalText('Correlate timestamps before taking the next action', true);
       await clickModalText('Web Server');
-      await clickModalText('Full Scan');
-      await clickModalText('LAUNCH SCAN');
-      await waitFor(`${label} Nmap full scan complete`, `Boolean(document.body?.innerText.includes('Scans: 1') || document.body?.innerText.includes('OS Guess'))`, 45000);
-      await clickModalText('Stealth Scan');
-      await clickModalText('LAUNCH SCAN');
-      await waitFor(`${label} Nmap score ready`, `
+      await launchNmapScan(label, 'Full Scan');
+      await waitFor(`${label} Nmap action ready`, `
         (() => {
-          const text = document.body.innerText.replace(/\\s+/g, ' ');
-          return text.includes('Scans: 2');
+          const text = document.body.innerText;
+          const gateStart = text.indexOf('Completion Gate');
+          const gateEnd = text.indexOf('Target Proof');
+          const gateText = gateStart >= 0 ? text.slice(gateStart, gateEnd > gateStart ? gateEnd : gateStart + 700) : text;
+          return gateText.toLowerCase().includes('latest signal valid');
         })()
-      `, 45000);
+      `, 12000);
     }
-
     async function runProxySimulation(label, counters = ['Correlate timestamps before taking the next action']) {
       for (const counter of counters) await clickModalText(counter, true);
       await clickModalText('Start Simulation');
@@ -829,14 +923,74 @@ async function main() {
       `, 12000);
     }
 
+
+    async function clickAvailableNetworkNode(nodeId) {
+      await waitFor(`network node ${nodeId} available`, `
+        (() => {
+          const expected = ${JSON.stringify(nodeId)};
+          return [...document.querySelectorAll('.fixed button[data-network-node-source="available"]')]
+            .some((candidate) => candidate.dataset.networkNodeId === expected);
+        })()
+      `, 12000);
+
+      const clicked = await evaluate(`
+        (() => {
+          const expected = ${JSON.stringify(nodeId)};
+          const button = [...document.querySelectorAll('.fixed button[data-network-node-source="available"]')]
+            .find((candidate) => candidate.dataset.networkNodeId === expected);
+          if (!button) return false;
+          button.scrollIntoView({ block: 'center', inline: 'center' });
+          button.click();
+          return true;
+        })()
+      `);
+      if (!clicked) {
+        const snapshot = await pageSnapshot(evaluate);
+        throw new Error(`Could not click available network node ${nodeId}.\n${snapshot}`);
+      }
+    }
     async function runNetworkNavigator(label) {
       await clickModalText('Shape traffic through the allowed service lane', true);
-      await clickModalText('1', true);
+      const levelClicked = await evaluate(`
+        (() => {
+          const button = document.querySelector('.fixed button[data-network-level-id="1"]');
+          if (!button) return false;
+          button.scrollIntoView({ block: 'center', inline: 'center' });
+          button.click();
+          return true;
+        })()
+      `);
+      if (!levelClicked) await clickModalText('1', true);
       await waitFor(`${label} network level ready`, `Boolean(document.body?.innerText.includes('Lvl 1') && document.body?.innerText.includes('Available next nodes'))`, 12000);
-      for (const node of ['R1', 'FW', 'R2', 'END']) {
-        await clickModalText(node, true);
-        await sleep(250);
+
+      const preferredOrder = ['FW1', 'FW2', 'K1', 'L1', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'E'];
+      for (let step = 0; step < 10; step += 1) {
+        const done = await evaluate(`Boolean(document.body?.innerText.includes('Level 1 Complete!'))`);
+        if (done) break;
+        const routeState = await evaluate(`
+          (() => {
+            const root = document.querySelector('.fixed [data-network-current]');
+            return {
+              current: root?.dataset.networkCurrent ?? null,
+              path: root?.dataset.networkPath ?? null,
+              complete: root?.dataset.networkComplete ?? null,
+              available: [...document.querySelectorAll('.fixed button[data-network-node-source="available"]')]
+                .map((candidate) => candidate.dataset.networkNodeId)
+                .filter(Boolean),
+            };
+          })()
+        `);
+        const available = routeState.available ?? [];
+        const nextNode = preferredOrder.find((nodeId) => available.includes(nodeId)) ?? available[0];
+        console.error(`[audit] ${label} network route step ${step + 1}: current=${routeState.current ?? 'none'} path=${routeState.path ?? 'none'} available=${available.join(',') || 'none'} choose=${nextNode ?? 'none'}`);
+        if (!nextNode) {
+          const snapshot = await pageSnapshot(evaluate);
+          throw new Error(`${label} network route stalled without available nodes.\n${snapshot}`);
+        }
+        await clickAvailableNetworkNode(nextNode);
+        await sleep(400);
       }
+
       await waitFor(`${label} network score ready`, `
         (() => {
           const text = document.body.innerText.replace(/\\s+/g, ' ');
@@ -1258,7 +1412,7 @@ async function main() {
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return text.includes('STEPS 1/44') &&
-          text.includes('STEP 2 · WEB ANALYSIS ACTIVE') &&
+          text.includes('STEP 2') && text.includes('WEB ANALYSIS ACTIVE') &&
           text.toUpperCase().includes('SQL SAFARI');
       })()
     `, 12000);
@@ -1288,7 +1442,7 @@ async function main() {
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return text.includes('STEPS 2/44') &&
-          text.includes('STEP 3 · ACCESS ACTIVE') &&
+          text.includes('STEP 3') && text.includes('ACCESS ACTIVE') &&
           text.toUpperCase().includes('SQL INJECTOR GUI');
       })()
     `, 12000);
@@ -1308,7 +1462,7 @@ async function main() {
       (() => {
         const text = document.body.innerText.replace(/\\s+/g, ' ');
         return text.includes('STEPS 3/44') &&
-          text.includes('STEP 4 · OBJECTIVE ACTIVE') &&
+          text.includes('STEP 4') && text.includes('OBJECTIVE ACTIVE') &&
           text.toUpperCase().includes('ENCRYPTION PIPELINE');
       })()
     `, 12000);
@@ -1593,18 +1747,16 @@ async function main() {
     await clickModalText('Use a narrow app-layer test and respect blocked patterns', true);
     await clickModalText('Correlate timestamps before taking the next action', true);
     await clickModalText('Web Server');
-    await clickModalText('Full Scan');
-    await clickModalText('LAUNCH SCAN');
-    await waitFor('Web Nmap full scan complete', `Boolean(document.body?.innerText.includes('Scans: 1') || document.body?.innerText.includes('OS Guess'))`, 45000);
-    await clickModalText('Stealth Scan');
-    await clickModalText('LAUNCH SCAN');
-    await waitFor('Web Nmap score ready', `
+    await launchNmapScan('Web Nmap', 'Full Scan');
+    await waitFor('Web Nmap action ready', `
       (() => {
-        const text = document.body.innerText.replace(/\\s+/g, ' ');
-        return text.includes('Scans: 2');
-      })()
-    `, 45000);
-    const webNmapState = await readModalState(openedWebNmap);
+          const text = document.body.innerText;
+          const gateStart = text.indexOf('Completion Gate');
+          const gateEnd = text.indexOf('Target Proof');
+          const gateText = gateStart >= 0 ? text.slice(gateStart, gateEnd > gateStart ? gateEnd : gateStart + 700) : text;
+          return gateText.toLowerCase().includes('latest signal valid');
+        })()
+    `, 12000);    const webNmapState = await readModalState(openedWebNmap);
     await assertSubmittable(webNmapState, 'Web Nmap');
     await submitStep();
     await waitFor('Web Malware step 1 completion', `

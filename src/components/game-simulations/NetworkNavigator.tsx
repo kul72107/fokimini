@@ -587,6 +587,8 @@ export default function NetworkNavigator({ onScoreChange, opsContext }: Props) {
             return (
               <motion.button
                 key={lvl.id}
+                data-network-level-id={lvl.id}
+                data-network-level-index={idx}
                 whileHover={isUnlocked ? { scale: 1.05 } : {}}
                 whileTap={isUnlocked ? { scale: 0.95 } : {}}
                 onClick={() => handleLevelSelect(idx)}
@@ -663,7 +665,7 @@ export default function NetworkNavigator({ onScoreChange, opsContext }: Props) {
   }
 
   return (
-    <div className="flex flex-col items-center gap-3 p-4">
+    <div className="flex flex-col items-center gap-3 p-4" data-network-current={currentNodeId} data-network-path={path.join(',')} data-network-complete={levelComplete ? 'true' : 'false'}>
       {/* Top HUD */}
       <div className="w-full max-w-lg flex items-center justify-between bg-purple-dark rounded-xl border-[3px] border-black px-4 py-2">
         <div className="flex items-center gap-2">
@@ -753,6 +755,8 @@ export default function NetworkNavigator({ onScoreChange, opsContext }: Props) {
           return (
             <motion.button
               key={node.id}
+              data-network-node-id={node.id}
+              data-network-node-source="map"
               onClick={() => handleNodeClick(node.id)}
               className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 ${
                 !levelComplete && !gameOver && (isAvailable || (node.type === 'key' && isAvailable)) && !isCollectedKey
@@ -934,6 +938,8 @@ export default function NetworkNavigator({ onScoreChange, opsContext }: Props) {
               return (
                 <button
                   key={nodeId}
+                  data-network-node-id={nodeId}
+                  data-network-node-source="available"
                   onClick={() => handleNodeClick(nodeId)}
                   className="flex items-center gap-1 px-3 py-1.5 bg-white border-[3px] border-black rounded-full font-nunito text-xs font-bold text-purple-dark hover:scale-105 transition-transform"
                   style={{ boxShadow: '3px 3px 0px 0px #3B0764' }}
