@@ -480,6 +480,18 @@ async function main() {
     }
 
     async function assertSubmittable(state, label, expectedSubmit = 'Complete VS Step') {
+      if (
+        !state.modalVisible ||
+        state.fallbackVisible ||
+        state.commitText !== expectedSubmit ||
+        state.commitDisabled ||
+        !state.toolActionComplete ||
+        state.forbiddenGateText.length > 0
+      ) {
+        const snapshot = await pageSnapshot(evaluate);
+        throw new Error(`${label} modal did not enable commit after tool action: ${JSON.stringify(state)}\n${snapshot}`);
+      }
+
       await selectTargetProof(label);
       const latest = await readModalState(state.openedTool);
       if (
@@ -492,11 +504,10 @@ async function main() {
         latest.forbiddenGateText.length > 0
       ) {
         const snapshot = await pageSnapshot(evaluate);
-        throw new Error(`${label} modal did not become submittable: ${JSON.stringify(latest)}\n${snapshot}`);
+        throw new Error(`${label} modal did not keep commit available after proof check: ${JSON.stringify(latest)}\n${snapshot}`);
       }
       console.error(`[audit] ${label} modal is submittable`);
     }
-
     async function submitStep() {
       await evaluate(`
         (() => {
@@ -1195,25 +1206,7 @@ async function main() {
       await sleep(4300);
     }
 
-    const modalState = await evaluate(`
-      (() => {
-        const text = document.body.innerText;
-        const gateStart = text.indexOf('Completion Gate');
-        const gateEnd = text.indexOf('Target Proof');
-        const gateText = gateStart >= 0
-          ? text.slice(gateStart, gateEnd > gateStart ? gateEnd : gateStart + 700)
-          : text;
-        const commit = [...document.querySelectorAll('button')].find((button) => /Commit Segment|Complete VS Step/.test(button.innerText));
-        return {
-          openedTool: ${JSON.stringify(openedTool)},
-
-          commitText: commit ? commit.innerText.replace(/\\s+/g, ' ').trim() : null,
-          commitDisabled: commit ? Boolean(commit.disabled) : null,
-          fallbackVisible: text.includes('Ops Circuit'),
-          modalVisible: text.includes('Completion Gate') && text.includes('Target Proof'),
-        };
-      })()
-    `);
+    const modalState = await readModalState(openedTool);
     await assertSubmittable(modalState, 'Initial DNS lookup', 'Commit Segment');
 
     await evaluate(`
@@ -1251,25 +1244,7 @@ async function main() {
     console.error('[audit] Nmap full scan running');
     await waitFor('Nmap full scan completion', `Boolean(document.body?.innerText.includes('Scans: 1') || document.body?.innerText.includes('OS Guess'))`, 45000);
 
-    const nmapModalState = await evaluate(`
-      (() => {
-        const text = document.body.innerText;
-        const gateStart = text.indexOf('Completion Gate');
-        const gateEnd = text.indexOf('Target Proof');
-        const gateText = gateStart >= 0
-          ? text.slice(gateStart, gateEnd > gateStart ? gateEnd : gateStart + 700)
-          : text;
-        const commit = [...document.querySelectorAll('button')].find((button) => /Commit Segment|Complete VS Step/.test(button.innerText));
-        return {
-          openedTool: ${JSON.stringify(openedSecondTool)},
-
-          commitText: commit ? commit.innerText.replace(/\\s+/g, ' ').trim() : null,
-          commitDisabled: commit ? Boolean(commit.disabled) : null,
-          fallbackVisible: text.includes('Ops Circuit'),
-          modalVisible: text.includes('Completion Gate') && text.includes('Target Proof'),
-        };
-      })()
-    `);
+    const nmapModalState = await readModalState(openedSecondTool);
     await assertSubmittable(nmapModalState, 'Initial Nmap');
 
     await evaluate(`

@@ -387,7 +387,7 @@ export default function OpsSimuleToolModal({
   const bridgedEffects = availableEffects.filter((effect) => step.accepts.includes(effect) && !profile.effects.includes(effect));
   const toolTip = buildToolTip({ tool, step, opsContext, directEffects, bridgedEffects });
   const toolActionComplete = bestSignal > 0 && actionEvents > 0;
-  const canComplete = toolActionComplete && proofComplete;
+  const canComplete = toolActionComplete;
   const isFinalChainSegment = chainPosition >= chainTotal;
 
   const handleScoreChange = (score: number) => {
@@ -453,7 +453,7 @@ export default function OpsSimuleToolModal({
                   <h3 className="font-fredoka text-xl font-black text-purple-darker">Completion Gate</h3>
                 </div>
                 <p className="font-nunito text-xs font-bold text-purple-dark">
-                  Segment {chainPosition}/{chainTotal} advances only after the ordered GUI action is complete and the target proof artifacts match {opsContext.target.platformName}.
+                  Segment {chainPosition}/{chainTotal} advances when the ordered GUI action is complete. Target proof stays available for context, but it does not block queue progress.
                 </p>
                 <div className="mt-4 space-y-2 rounded-xl border-[3px] border-black bg-purple-pale p-3">
                   <div className="flex items-center justify-between gap-2 rounded-xl border-2 border-black bg-white px-3 py-2">
@@ -465,7 +465,7 @@ export default function OpsSimuleToolModal({
                   <div className="flex items-center justify-between gap-2 rounded-xl border-2 border-black bg-white px-3 py-2">
                     <span className="font-nunito text-[10px] font-black uppercase text-purple-dark">Target proof</span>
                     <span className={`font-nunito text-[10px] font-black uppercase ${proofComplete ? 'text-green-success' : 'text-purple-primary'}`}>
-                      {proofComplete ? 'Verified' : 'Select matches'}
+                      {proofComplete ? 'Verified' : 'Optional check'}
                     </span>
                   </div>
                   <p className="font-nunito text-[10px] font-black uppercase text-purple-light">
@@ -584,7 +584,7 @@ export default function OpsSimuleToolModal({
                   <Target size={18} strokeWidth={3} className="text-purple-primary" />
                   {!toolActionComplete
                     ? 'Complete the target action inside this simuletool.'
-                    : 'Select every correct target proof artifact below.'}
+                    : 'Tool action complete. Commit to advance the simuletool queue.'}
                 </>
               )}
             </div>
